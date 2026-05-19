@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>Cafeteria — Incoming Orders — UniFlow</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static-mockups/assets/css/styles.css">
+<style>
+  .board { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  @media (max-width: 1100px) { .board { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 600px)  { .board { grid-template-columns: 1fr; } }
+  .col { background: var(--bg); border-radius: 12px; padding: 10px; min-height: 200px; }
+  .col h3 { display: flex; align-items: center; gap: 8px; font-size: 13px; text-transform: uppercase; color: var(--muted); letter-spacing: .05em; margin-bottom: 10px; padding: 4px 6px; }
+  .col h3 .count { background: var(--surface); border: 1px solid var(--border); padding: 1px 8px; border-radius: 999px; font-size: 11px; color: var(--text); }
+  .col h3 .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .col.new .dot { background: var(--info); }
+  .col.prep .dot { background: var(--warn); }
+  .col.ready .dot { background: var(--success); animation: blip 1.5s infinite; }
+  .col.done .dot { background: var(--muted); }
+  @keyframes blip { 0%,100%{opacity:1} 50%{opacity:.35} }
+  .order { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin-bottom: 8px; cursor: grab; transition: box-shadow .15s, transform .15s; }
+  .order:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
+  .order .head { display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: var(--muted); }
+  .order .head code { color: var(--text); font-weight: 600; }
+  .order .items { font-size: 13px; margin-top: 8px; line-height: 1.6; }
+  .order .foot { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; gap: 8px; }
+  .order .total { font-weight: 700; }
+  .order .actions { display: flex; gap: 4px; }
+  .order.urgent { border-left: 3px solid var(--danger); }
+  .order .age { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .ticker { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--success); }
+  .ticker .blip { width: 8px; height: 8px; border-radius: 50%; background: var(--success); animation: blip 1.5s infinite; }
+</style>
+</head><body>
+<script src="/static-mockups/assets/js/mock-data.js"></script>
+<script src="/static-mockups/assets/js/app.js"></script>
+<script>
+  UniFlow.renderShell({ title: 'Incoming Orders — Kitchen Board' });
+
+  function lookup(id) { return MOCK.cafeteriaMenu.find(m => m.id === id); }
+  function money(n) { return '₼' + n.toFixed(2); }
+  function rid() { return 'CO-' + (2100 + Math.floor(Math.random() * 900)); }
+  function pick(n) { const out = []; for (let i = 0; i < n; i++) { const m = MOCK.cafeteriaMenu[Math.floor(Math.random()*MOCK.cafeteriaMenu.length)]; out.push({ id: m.id, q: 1 + Math.floor(Math.random()*2) }); } return out; }
+  function totalOf(items) { return items.reduce((s,i) => s + lookup(i.id).price * i.q, 0); }
+
+  // Seed ~14 orders across statuses
+  const STATUSES = ['new', 'prep', 'ready', 'done'];
+  const seedNames = [
+    ['S-1001','Aysel Quliyeva'],['S-1002','Rashad Aliyev'],['S-1003','Lale Mammadova'],
+    ['S-1004','Emil Hasanov'],['S-1005','Nigar Suleymanli'],['S-1006','Tural Ismayilov'],
+    ['S-2101','Sevda Hasanli'],['S-2103','Kamil Asadov'],['S-2104','Anar Quliyev'],
+    ['S-2106','Murad Pashayev'],['S-2108','Elvin Mehdiyev'],['S-2109','Aysel Babayeva'],
+    ['S-2110','Farid Suleymanov'],['S-2111','Gulnar Aliyeva'],
+  ];
+  let orders = seedNames.map((s, i) => {
+    const items = pick(1 + Math.floor(Math.random() * 3));
+    const ageSec = Math.floor(Math.random() * (i < 4 ? 60 : i < 9 ? 280 : 900));
+    return {
+      id: rid(), sid: s[0], name: s[1], items, total: totalOf(items),
+      method: Math.random() < 0.65 ? 'Balance' : 'QR · Reg 2',
+      placed: new Date(Date.now() - ageSec * 1000),
+      status: STATUSES[Math.min(3, Math.floor(i / 4))],
+      channel: Math.random() < 0.7 ? 'App pickup' : 'Counter'
+    };
+  });
+
+  const NEXT = { new: 'prep', prep: 'ready', ready: 'done' };
+
+  function age(o) {
+    const s = Math.floor((Date.now() - o.placed.getTime()) / 1000);
+    const m = Math.floor(s / 60), r = s % 60;
+    return m + ':' + (r < 10 ? '0' : '') + r;
+  }
+
+  UniFlow.setContent(`
+    <div class="grid kpi">
+      <div class="card kpi-card"><div class="label">New</div><div class="value" style="color:var(--info)" id="k-new">0</div><div class="delta">awaiting kitchen</div></div>
+      <div class="card kpi-card"><div class="label">Preparing</div><div class="value" style="color:var(--warn)" id="k-prep">0</div><div class="delta">in progress</div></div>
+      <div class="card kpi-card"><div class="label">Ready</div><div class="value" style="color:var(--success)" id="k-ready">0</div><div class="delta">awaiting pickup</div></div>
+      <div class="card kpi-card"><div class="label">Avg prep time</div><div class="value">4:12</div><div class="delta up">−18s vs yesterday</div></div>
+    </div>
+
+    <div class="card mt-16">
+      <div class="row between">
+        <h2>Live Order Board</h2>
+        <div class="row">
+          <span class="ticker"><span class="blip"></span>LIVE</span>
+          <button class="btn ghost btn-sm" onclick="alert('Audio alerts on new orders enabled (stub)')">🔔 Sounds</button>
+          <button class="btn ghost btn-sm" onclick="alert('Print all New tickets (stub)')">🖨️ Print new</button>
+          <button class="btn primary btn-sm" id="add-fake">+ Simulate new order</button>
+        </div>
+      </div>
+      <div class="board mt-16" id="board"></div>
+    </div>
+  `);
+
+  function render() {
+    const board = document.getElementById('board');
+    const labels = { new: 'New', prep: 'Preparing', ready: 'Ready for pickup', done: 'Picked up' };
+    board.innerHTML = STATUSES.map(s => {
+      const list = orders.filter(o => o.status === s).sort((a, b) => a.placed - b.placed);
+      return `<div class="col ${s}">
+        <h3><span class="dot"></span>${labels[s]} <span class="count">${list.length}</span></h3>
+        ${list.length === 0 ? '<div class="empty text-sm" style="padding:18px 8px">—</div>' :
+          list.map(o => {
+            const ageSec = Math.floor((Date.now() - o.placed.getTime()) / 1000);
+            const urgent = s === 'new' && ageSec > 180;
+            return `<div class="order ${urgent ? 'urgent' : ''}">
+              <div class="head"><code>${o.id}</code><span class="age">${age(o)}</span></div>
+              <div style="font-weight:600;margin-top:4px">${o.name} <span class="text-muted text-sm">${o.sid}</span></div>
+              <div class="items">${o.items.map(i => { const m = lookup(i.id); return `<div>${m.emoji} ${m.name} × ${i.q}</div>`; }).join('')}</div>
+              <div class="foot">
+                <div>
+                  <div class="total">${money(o.total)}</div>
+                  <div class="text-muted text-sm">${o.method} · ${o.channel}</div>
+                </div>
+                <div class="actions">
+                  ${NEXT[s] ? `<button class="btn primary btn-sm" data-advance="${o.id}">${ s==='new'?'Start →':s==='prep'?'Ready →':'Picked up ✓' }</button>` : '<span class="badge muted">done</span>'}
+                  ${s !== 'done' ? `<button class="btn ghost btn-sm" data-cancel="${o.id}" title="Cancel order">✕</button>` : ''}
+                </div>
+              </div>
+            </div>`;
+          }).join('')}
+      </div>`;
+    }).join('');
+    document.getElementById('k-new').textContent = orders.filter(o => o.status === 'new').length;
+    document.getElementById('k-prep').textContent = orders.filter(o => o.status === 'prep').length;
+    document.getElementById('k-ready').textContent = orders.filter(o => o.status === 'ready').length;
+    board.querySelectorAll('[data-advance]').forEach(b => b.addEventListener('click', () => {
+      const o = orders.find(x => x.id === b.dataset.advance); if (!o) return;
+      o.status = NEXT[o.status] || o.status;
+      if (o.status === 'done') o.donedAt = new Date();
+      render();
+    }));
+    board.querySelectorAll('[data-cancel]').forEach(b => b.addEventListener('click', () => {
+      if (!confirm('Cancel and refund this order?')) return;
+      orders = orders.filter(o => o.id !== b.dataset.cancel);
+      render();
+    }));
+  }
+  render();
+
+  // Tick the age timers + auto-arrive new orders
+  setInterval(render, 1000);
+  setInterval(() => {
+    if (Math.random() < 0.4) addFake();
+  }, 12000);
+
+  function addFake() {
+    const names = [['S-1005','Nigar Suleymanli'],['S-2102','Nigar Rzayeva'],['S-2107','Aybeniz Karimli'],['S-2112','Ramin Zeynalov'],['S-2114','Sabina Rahimli']];
+    const s = names[Math.floor(Math.random()*names.length)];
+    const items = pick(1 + Math.floor(Math.random()*3));
+    orders.unshift({
+      id: rid(), sid: s[0], name: s[1], items, total: totalOf(items),
+      method: Math.random() < 0.7 ? 'Balance' : 'QR · Reg 2',
+      placed: new Date(),
+      status: 'new',
+      channel: Math.random() < 0.7 ? 'App pickup' : 'Counter'
+    });
+    render();
+  }
+  document.getElementById('add-fake').addEventListener('click', addFake);
+</script>
+</body></html>

@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>Cafeteria — Revenue — UniFlow</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static-mockups/assets/css/styles.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head><body>
+<script src="/static-mockups/assets/js/mock-data.js"></script>
+<script src="/static-mockups/assets/js/app.js"></script>
+<script>
+  UniFlow.renderShell({ title: 'Cafeteria Revenue' });
+
+  // ---- Synthesize realistic-looking analytics ----
+  function money(n) { return '₼' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+  // Hourly sales today (06–22)
+  const hours = []; for (let h = 7; h <= 21; h++) hours.push(h + ':00');
+  const hourlyShape = [4, 18, 22, 35, 96, 184, 165, 78, 42, 36, 52, 88, 64, 26, 12]; // peaks at lunch + dinner
+  const hourlyOrders = [1, 4, 5, 8, 22, 41, 38, 18, 10, 9, 13, 21, 16, 7, 3];
+
+  // Last 14 days sales
+  const dayLabels = []; const daySales = []; const dayOrders = [];
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date(); d.setDate(d.getDate() - i);
+    dayLabels.push(d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }));
+    const weekend = d.getDay() === 0 || d.getDay() === 6;
+    const v = (weekend ? 280 : 820) + Math.round(Math.random() * 220);
+    daySales.push(v); dayOrders.push(Math.round(v / 4.6));
+  }
+  const totalToday = hourlyShape.reduce((a,b)=>a+b, 0);
+  const ordersToday = hourlyOrders.reduce((a,b)=>a+b, 0);
+  const totalWeek = daySales.slice(-7).reduce((a,b)=>a+b, 0);
+  const avgTicket = totalToday / ordersToday;
+
+  // Top items
+  const topItems = [
+    { name: 'Plov with lamb',       qty: 142, rev: 142 * 5.80, emoji: '🍛' },
+    { name: 'Cappuccino',           qty: 388, rev: 388 * 1.80, emoji: '☕' },
+    { name: 'Chicken kebab + rice', qty: 96,  rev: 96 * 6.20,  emoji: '🍗' },
+    { name: 'Cheese sandwich',      qty: 184, rev: 184 * 2.40, emoji: '🥪' },
+    { name: 'Pasta carbonara',      qty: 78,  rev: 78 * 4.80,  emoji: '🍝' },
+    { name: 'Chocolate croissant',  qty: 156, rev: 156 * 1.80, emoji: '🥐' },
+    { name: 'Fresh orange juice',   qty: 124, rev: 124 * 2.20, emoji: '🧃' },
+    { name: 'Caesar salad',         qty: 62,  rev: 62 * 3.90,  emoji: '🥗' },
+  ].sort((a,b) => b.rev - a.rev);
+
+  const paymentSplit = { Balance: 0.71, QR: 0.24, Cash: 0.05 }; // legacy cash 5%
+  const channelSplit = { 'App pickup': 0.58, 'Counter': 0.42 };
+
+  // Recent transactions (use cafeteriaOrders + synth)
+  const recent = [...MOCK.cafeteriaOrders];
+
+  UniFlow.setContent(`
+    <div class="row between">
+      <div class="row">
+        <div class="field" style="margin:0"><label>Location</label>
+          <select><option>Main Canteen (Block A)</option><option>Sciences canteen</option><option>Dorm cafe</option></select>
+        </div>
+        <div class="field" style="margin:0"><label>Period</label>
+          <select id="period"><option>Today</option><option>This week</option><option>This month</option><option>Custom…</option></select>
+        </div>
+      </div>
+      <div class="row">
+        <button class="btn ghost" onclick="alert('Exported CSV (stub)')">Export CSV</button>
+        <button class="btn primary" onclick="window.print()">Print report</button>
+      </div>
+    </div>
+
+    <div class="grid kpi mt-16">
+      <div class="card kpi-card"><div class="label">Sales today</div><div class="value">${money(totalToday)}</div><div class="delta up">+8.4% vs avg</div></div>
+      <div class="card kpi-card"><div class="label">Orders today</div><div class="value">${ordersToday}</div><div class="delta up">+12 vs yesterday</div></div>
+      <div class="card kpi-card"><div class="label">Avg ticket</div><div class="value">${money(avgTicket)}</div><div class="delta">across all channels</div></div>
+      <div class="card kpi-card"><div class="label">Sales last 7 days</div><div class="value">${money(totalWeek)}</div><div class="delta up">+₼310 vs prior week</div></div>
+    </div>
+
+    <div class="grid two mt-16" style="grid-template-columns: 2fr 1fr">
+      <div class="card">
+        <h2>Sales by hour — today</h2>
+        <div class="chart-wrap"><canvas id="ch-hour"></canvas></div>
+        <p class="text-muted text-sm mt-12">Peak lunch window 11:00–13:00 drove ${Math.round((hourlyShape[4]+hourlyShape[5]+hourlyShape[6])/totalToday*100)}% of today's revenue.</p>
+      </div>
+      <div class="card">
+        <h2>Payment method</h2>
+        <div class="chart-wrap" style="height:220px"><canvas id="ch-pay"></canvas></div>
+        <div class="info-row mt-12"><div class="k">LMS Balance</div><div>${Math.round(paymentSplit.Balance*100)}% · ${money(totalToday*paymentSplit.Balance)}</div></div>
+        <div class="info-row"><div class="k">QR payment</div><div>${Math.round(paymentSplit.QR*100)}% · ${money(totalToday*paymentSplit.QR)}</div></div>
+        <div class="info-row"><div class="k">Cash (legacy)</div><div>${Math.round(paymentSplit.Cash*100)}% · ${money(totalToday*paymentSplit.Cash)}</div></div>
+      </div>
+    </div>
+
+    <div class="grid two mt-16">
+      <div class="card">
+        <h2>Last 14 days</h2>
+        <div class="chart-wrap"><canvas id="ch-week"></canvas></div>
+      </div>
+      <div class="card">
+        <h2>Order channel</h2>
+        <div class="chart-wrap" style="height:220px"><canvas id="ch-channel"></canvas></div>
+        <p class="text-muted text-sm mt-12">App pickup orders skip the counter queue. Median wait dropped from 8m to 3m since launch.</p>
+      </div>
+    </div>
+
+    <div class="grid two mt-16" style="grid-template-columns: 1.2fr 1fr">
+      <div class="card">
+        <h2>Top items by revenue</h2>
+        <div class="table-wrap mt-12">
+          <table class="data">
+            <thead><tr><th>#</th><th>Item</th><th>Qty</th><th>Revenue</th><th>Share</th></tr></thead>
+            <tbody>
+              ${topItems.map((t, i) => `<tr>
+                <td>${i+1}</td>
+                <td>${t.emoji} ${t.name}</td>
+                <td>${t.qty}</td>
+                <td><strong>${money(t.rev)}</strong></td>
+                <td><div style="background:var(--primary-soft);height:8px;border-radius:4px;width:120px;overflow:hidden"><div style="height:100%;width:${Math.round(t.rev/topItems[0].rev*100)}%;background:var(--primary)"></div></div></td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Recent transactions</h2>
+        <div class="table-wrap mt-12">
+          <table class="data">
+            <thead><tr><th>Order</th><th>Items</th><th>Method</th><th>Total</th></tr></thead>
+            <tbody>
+              ${recent.map(o => `<tr>
+                <td><code>${o.id}</code><br><span class="text-muted text-sm">${UniFlow.fmt.date(o.when)}</span></td>
+                <td>${o.items.map(i => { const m = MOCK.cafeteriaMenu.find(x => x.id === i.id); return m ? m.emoji + '×' + i.q : ''; }).join(' ')}</td>
+                <td><span class="badge ${o.method.startsWith('QR') ? 'info' : 'success'}">${o.method.split('·')[0].trim()}</span></td>
+                <td><strong>${money(o.total)}</strong></td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mt-16">
+      <h2>Settlement to Finance</h2>
+      <div class="grid kpi" style="grid-template-columns: repeat(4, 1fr)">
+        <div class="card kpi-card"><div class="label">Pending payout</div><div class="value">${money(totalWeek)}</div><div class="delta">settles tonight 23:30</div></div>
+        <div class="card kpi-card"><div class="label">Bank account</div><div class="value" style="font-size:16px">•••• 8821</div><div class="delta">Kapital Bank</div></div>
+        <div class="card kpi-card"><div class="label">Last settlement</div><div class="value" style="font-size:16px">₼ 6,140.00</div><div class="delta">3 days ago</div></div>
+        <div class="card kpi-card"><div class="label">YTD revenue</div><div class="value">₼ 184,250</div><div class="delta up">+11.2% YoY</div></div>
+      </div>
+      <p class="text-muted text-sm mt-12">All cashless payments (LMS Balance + QR) are aggregated nightly and posted to the Finance module as <code>cafeteria_revenue</code> transactions.</p>
+    </div>
+  `);
+
+  // ---- Charts ----
+  const colors = { primary: '#1A5AD7', soft: 'rgba(26,90,215,0.12)', success: '#16A34A', warn: '#D97706', danger: '#DC2626', info: '#0EA5E9', muted: '#9CA3AF' };
+
+  new Chart(document.getElementById('ch-hour'), {
+    type: 'bar',
+    data: { labels: hours, datasets: [
+      { label: 'Sales (₼)', data: hourlyShape, backgroundColor: colors.primary, borderRadius: 4, yAxisID: 'y' },
+      { label: 'Orders', data: hourlyOrders, type: 'line', borderColor: colors.warn, backgroundColor: colors.warn, tension: .35, yAxisID: 'y1' }
+    ]},
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } },
+      scales: { y: { beginAtZero: true, position: 'left', title: { display: true, text: '₼' } },
+                y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'Orders' } } } }
+  });
+
+  new Chart(document.getElementById('ch-week'), {
+    type: 'line',
+    data: { labels: dayLabels, datasets: [
+      { label: 'Sales (₼)', data: daySales, borderColor: colors.primary, backgroundColor: colors.soft, fill: true, tension: .3, yAxisID: 'y' },
+      { label: 'Orders', data: dayOrders, borderColor: colors.info, backgroundColor: 'transparent', tension: .3, yAxisID: 'y1' }
+    ]},
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } },
+      scales: { y: { beginAtZero: true, position: 'left' }, y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false } } } }
+  });
+
+  new Chart(document.getElementById('ch-pay'), {
+    type: 'doughnut',
+    data: { labels: ['LMS Balance', 'QR payment', 'Cash (legacy)'], datasets: [{ data: [paymentSplit.Balance, paymentSplit.QR, paymentSplit.Cash], backgroundColor: [colors.primary, colors.info, colors.muted], borderWidth: 0 }] },
+    options: { responsive: true, maintainAspectRatio: false, cutout: '62%', plugins: { legend: { position: 'bottom' } } }
+  });
+
+  new Chart(document.getElementById('ch-channel'), {
+    type: 'doughnut',
+    data: { labels: ['App pickup', 'Counter'], datasets: [{ data: [channelSplit['App pickup'], channelSplit['Counter']], backgroundColor: [colors.primary, colors.warn], borderWidth: 0 }] },
+    options: { responsive: true, maintainAspectRatio: false, cutout: '62%', plugins: { legend: { position: 'bottom' } } }
+  });
+</script>
+</body></html>

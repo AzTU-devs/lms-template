@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>Circulation Desk — UniFlow</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static-mockups/assets/css/styles.css">
+<style>
+  .scanner { aspect-ratio: 5/2; max-width: 100%; background: #0B1220; border-radius: 16px; position: relative; overflow: hidden; display: grid; place-items: center; color: #fff; }
+  .scanner::before { content:''; position:absolute; inset:10% 14%; border: 2px solid rgba(255,255,255,.6); border-radius: 12px; }
+  .scanner .line { position: absolute; left: 14%; right: 14%; height: 2px; background: linear-gradient(90deg, transparent, #1A5AD7, transparent); animation: scan 2s ease-in-out infinite; box-shadow: 0 0 14px #1A5AD7; }
+  @keyframes scan { 0%,100% { top: 14%; } 50% { top: 84%; } }
+  .scanner .label { position: relative; text-align: center; font-size: 13px; opacity: .85; z-index: 2; }
+  .scanner .hint { position: absolute; bottom: 10px; left: 0; right: 0; text-align: center; font-size: 11px; color: rgba(255,255,255,.7); }
+  .book-row { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px dashed var(--border); align-items: center; }
+  .book-row:last-child { border-bottom: none; }
+  .book-cover { font-size: 22px; width: 34px; height: 42px; display: grid; place-items: center; background: var(--bg); border-radius: 6px; flex: none; }
+  .book-meta { flex: 1; min-width: 0; }
+  .book-meta .ttl { font-weight: 600; font-size: 13px; }
+  .book-meta .sub { font-size: 12px; color: var(--muted); }
+  .feed-item { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px dashed var(--border); font-size: 13px; }
+  .feed-item:last-child { border-bottom: none; }
+  .feed-icon { width: 28px; height: 28px; border-radius: 999px; background: var(--bg); display: grid; place-items: center; flex: none; }
+  .member-card { display: flex; gap: 14px; padding: 14px; background: var(--bg); border-radius: 12px; border: 1px solid var(--border); }
+  .member-avatar { width: 56px; height: 56px; border-radius: 50%; background: var(--primary); color: #fff; font-weight: 700; display: grid; place-items: center; font-size: 18px; flex: none; }
+  .alert-fines { background: rgba(220,38,38,.06); border-left: 3px solid #DC2626; padding: 10px 12px; border-radius: 6px; margin-top: 10px; font-size: 13px; }
+  .basket-empty { text-align: center; padding: 24px; color: var(--muted); font-size: 13px; border: 1px dashed var(--border); border-radius: 10px; }
+</style>
+</head><body>
+<script src="/static-mockups/assets/js/mock-data.js"></script>
+<script src="/static-mockups/assets/js/app.js"></script>
+<script>
+  UniFlow.renderShell({ title: 'Circulation Desk' });
+
+  const books = MOCK.libraryBooks;
+  const loans = MOCK.libraryLoans;
+  const holds = MOCK.libraryHolds;
+  const fines = MOCK.libraryFines;
+  const bookById = (id) => books.find(b => b.id === id);
+
+  let activeTab = 'issue';
+  let currentMember = null;
+  let basket = []; // book ids
+  let loanDays = 14;
+
+  const todaysIssues = [
+    { t: '11:42', member: 'Rashad Aliyev', book: 'Clean Code' },
+    { t: '11:18', member: 'Lale Mammadova', book: 'Calculus, Vol. 1' },
+    { t: '10:55', member: 'Emil Hasanov', book: 'Meditations' },
+    { t: '10:32', member: 'Nigar Suleymanli', book: 'A Brief History of Time' },
+    { t: '10:09', member: 'Dr. Samir B.', book: 'Deep Learning' },
+    { t: '09:44', member: 'Tural Ismayilov', book: 'Engineering Mechanics' },
+  ];
+  const todaysReturns = [
+    { t: '11:50', member: 'Aysel Quliyeva', book: 'War and Peace', late: 0 },
+    { t: '11:10', member: 'Rashad Aliyev', book: 'Sapiens', late: 0 },
+    { t: '10:40', member: 'Lale Mammadova', book: 'Algorithms', late: 3 },
+    { t: '09:55', member: 'Emil Hasanov', book: 'Meditations', late: 0 },
+  ];
+
+  function render() {
+    UniFlow.setContent(`
+      <div class="tabs">
+        ${['issue','return','renew','lookup'].map(t => `
+          <button data-tab="${t}" class="${activeTab===t?'active':''}">
+            ${t==='issue'?'📤 Issue':t==='return'?'📥 Return':t==='renew'?'🔄 Renew':'🔍 Quick lookup'}
+          </button>
+        `).join('')}
+      </div>
+
+      <div class="grid mt-16" style="grid-template-columns: 1.4fr 1fr; gap: 16px">
+        <div>
+          <div class="card">
+            <h2>${activeTab==='issue'?'Issue books':activeTab==='return'?'Return books':activeTab==='renew'?'Renew loans':'Quick lookup'}</h2>
+            <div class="scanner mt-12">
+              <div class="line"></div>
+              <div class="label">📷 Scan member card or book barcode<br><span style="opacity:.6">camera placeholder</span></div>
+              <div class="hint">Auto-detect · USB-HID / WebRTC stub</div>
+            </div>
+            <div class="mt-16">
+              ${renderTabBody()}
+            </div>
+          </div>
+        </div>
+
+        <div>
+          ${renderSidePanel()}
+        </div>
+      </div>
+    `);
+    wire();
+  }
+
+  function renderTabBody() {
+    if (activeTab === 'issue') return renderIssue();
+    if (activeTab === 'return') return renderReturn();
+    if (activeTab === 'renew') return renderRenew();
+    return renderLookup();
+  }
+
+  function renderIssue() {
+    return `
+      <div class="grid two" style="gap:12px">
+        <div class="field"><label>Member ID</label><input id="member-id" type="text" placeholder="e.g. S-1001" value="${currentMember?currentMember.id:''}"></div>
+        <div class="field"><label>Book ID / ISBN</label><input id="book-id" type="text" placeholder="e.g. B-003"></div>
+      </div>
+      <div class="row">
+        <button class="btn ghost btn-sm" id="lookup-member">Lookup member</button>
+        <button class="btn ghost btn-sm" id="add-book">+ Add book to basket</button>
+        <button class="btn ghost btn-sm" id="sim-scan">Simulate scan</button>
+      </div>
+
+      ${currentMember ? renderMemberCard(currentMember) : '<p class="text-muted mt-12 text-sm">Step 1 — enter or scan member card.</p>'}
+
+      <h3 class="mt-16">Issue basket</h3>
+      ${basket.length === 0
+        ? '<div class="basket-empty">Step 2 — scan book barcodes to add to basket.</div>'
+        : basket.map((id, i) => {
+            const b = bookById(id);
+            return `<div class="book-row">
+              <div class="book-cover">${b?b.cover:'📖'}</div>
+              <div class="book-meta">
+                <div class="ttl">${b?b.title:id}</div>
+                <div class="sub">${b?b.authors:''} · ${b?b.available+'/'+b.copies+' available':''}</div>
+              </div>
+              <button class="btn btn-sm ghost" data-rm="${i}">Remove</button>
+            </div>`;
+          }).join('')}
+
+      <div class="row between mt-16">
+        <div class="field" style="margin:0">
+          <label style="font-size:12px">Loan period</label>
+          <select id="loan-days" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);font:inherit">
+            <option value="7" ${loanDays===7?'selected':''}>7 days</option>
+            <option value="14" ${loanDays===14?'selected':''}>14 days (default)</option>
+            <option value="21" ${loanDays===21?'selected':''}>21 days</option>
+            <option value="30" ${loanDays===30?'selected':''}>30 days (staff)</option>
+          </select>
+        </div>
+        <button class="btn primary" id="do-issue" ${(!currentMember || basket.length===0)?'disabled':''}>
+          Issue ${basket.length} book${basket.length===1?'':'s'} (${loanDays} days)
+        </button>
+      </div>
+    `;
+  }
+
+  function renderMemberCard(m) {
+    const activeMyLoans = loans.filter(l => l.userId === m.id && (l.status==='Active'||l.status==='Overdue')).length;
+    const myFines = fines.filter(f => f.userId === m.id && !f.paid).reduce((s,f) => s+f.amount, 0);
+    const overdue = loans.some(l => l.userId === m.id && l.status === 'Overdue');
+    const blocked = myFines > 5;
+    return `
+      <div class="member-card mt-12">
+        <div class="member-avatar">${m.name.split(' ').map(s=>s[0]).slice(0,2).join('')}</div>
+        <div style="flex:1">
+          <div style="font-weight:700">${m.name} <span class="badge ${m.kind==='Teacher'?'info':'muted'}">${m.kind||'Student'}</span></div>
+          <div class="text-muted text-sm">${m.id} · ${m.dept||''}</div>
+          <div class="row mt-12" style="gap:18px;font-size:13px">
+            <div><strong>${activeMyLoans}</strong> active loans</div>
+            <div>Unpaid fines: <strong style="color:${myFines>0?'#b91c1c':'inherit'}">₼${myFines.toFixed(2)}</strong></div>
+            <div>${overdue?'<span class="badge danger">Has overdue</span>':'<span class="badge success">Good standing</span>'}</div>
+          </div>
+        </div>
+      </div>
+      ${blocked ? `<div class="alert-fines">⚠️ Member has unpaid fines exceeding ₼5. Issue blocked. <button class="btn btn-sm ghost" id="override" style="margin-left:8px">Override</button></div>` : ''}
+    `;
+  }
+
+  function renderReturn() {
+    const outBooks = loans.filter(l => l.status === 'Active' || l.status === 'Overdue').slice(0, 6);
+    return `
+      <div class="field"><label>Book ID / barcode</label><input id="ret-book-id" type="text" placeholder="e.g. B-002"></div>
+      <div class="row">
+        <button class="btn ghost btn-sm" id="ret-scan">Simulate scan</button>
+        <button class="btn ghost btn-sm" id="ret-lookup">Lookup loan</button>
+      </div>
+
+      <h3 class="mt-16">Books currently out</h3>
+      ${outBooks.map(l => {
+        const b = bookById(l.book);
+        const dueDate = new Date(l.due);
+        const today2 = new Date(); today2.setHours(0,0,0,0);
+        const daysLate = Math.max(0, Math.floor((today2 - dueDate)/86400000));
+        const fee = (daysLate * 0.55).toFixed(2);
+        return `<div class="book-row">
+          <div class="book-cover">${b?b.cover:'📖'}</div>
+          <div class="book-meta">
+            <div class="ttl">${b?b.title:l.book}</div>
+            <div class="sub">${l.userName} · due ${UniFlow.fmt.date(l.due)} ${daysLate>0?`· <span style="color:#b91c1c">${daysLate}d late · ₼${fee} fee</span>`:''}</div>
+          </div>
+          <button class="btn btn-sm primary" data-return="${l.id}">Confirm return</button>
+        </div>`;
+      }).join('')}
+    `;
+  }
+
+  function renderRenew() {
+    const active = loans.filter(l => l.status === 'Active' || l.status === 'Overdue');
+    return `
+      <div class="field"><label>Search active loans (member / book / loan id)</label><input type="text" placeholder="Type to filter..."></div>
+      ${active.map(l => {
+        const b = bookById(l.book);
+        const newDue = new Date(new Date(l.due).getTime() + 14*86400000);
+        const blocked = l.renewals >= 2 || l.status === 'Overdue';
+        const reason = l.renewals >= 2 ? 'Max renewals reached' : l.status === 'Overdue' ? 'Loan is overdue' : '';
+        return `<div class="book-row">
+          <div class="book-cover">${b?b.cover:'📖'}</div>
+          <div class="book-meta">
+            <div class="ttl">${b?b.title:l.book}</div>
+            <div class="sub">${l.userName} · current due ${UniFlow.fmt.date(l.due)} → <strong>${UniFlow.fmt.date(newDue)}</strong> · ${l.renewals} renewals</div>
+          </div>
+          ${blocked
+            ? `<span class="badge danger" title="${reason}">${reason}</span>`
+            : `<button class="btn btn-sm primary" data-renew="${l.id}">Renew +14d</button>`}
+        </div>`;
+      }).join('')}
+    `;
+  }
+
+  function renderLookup() {
+    return `
+      <div class="field"><label>Search by member ID, name, book ID, or ISBN</label><input id="lookup-q" type="text" placeholder="e.g. S-1001 or B-002 or 'Clean Code'"></div>
+      <div class="row">
+        <button class="btn ghost btn-sm" data-q="S-1001">Sample: S-1001</button>
+        <button class="btn ghost btn-sm" data-q="B-002">Sample: B-002</button>
+      </div>
+      <div id="lookup-result" class="mt-16"></div>
+    `;
+  }
+
+  function renderSidePanel() {
+    if (activeTab === 'return') {
+      return `<div class="card">
+        <h2>Today's returns</h2>
+        <div class="mt-12">
+          ${todaysReturns.map(r => `<div class="feed-item">
+            <div class="feed-icon">📥</div>
+            <div style="flex:1">
+              <div><strong>${r.member}</strong> returned ${r.book}</div>
+              <div class="text-muted text-sm">${r.t} ${r.late?'· ₼'+(r.late*0.55).toFixed(2)+' late fee':''}</div>
+            </div>
+          </div>`).join('')}
+        </div>
+      </div>`;
+    }
+    return `<div class="card">
+      <h2>Today's issues</h2>
+      <div class="mt-12">
+        ${todaysIssues.map(i => `<div class="feed-item">
+          <div class="feed-icon">📤</div>
+          <div style="flex:1">
+            <div><strong>${i.member}</strong> took out ${i.book}</div>
+            <div class="text-muted text-sm">${i.t}</div>
+          </div>
+        </div>`).join('')}
+      </div>
+      <div class="row between mt-12">
+        <span class="text-muted text-sm">${todaysIssues.length} issued today</span>
+        <button class="btn btn-sm ghost" onclick="alert('Activity exported (stub)')">Export</button>
+      </div>
+    </div>
+    <div class="card mt-16">
+      <h2>Holds queue</h2>
+      <div class="mt-12">
+        ${holds.slice(0,4).map(h => {
+          const b = bookById(h.book);
+          return `<div class="book-row">
+            <div class="book-cover">${b?b.cover:'📖'}</div>
+            <div class="book-meta"><div class="ttl">${b?b.title:h.book}</div><div class="sub">${h.userName} · pos #${h.position} · <span class="badge ${h.status==='Ready for pickup'?'success':'warn'}">${h.status}</span></div></div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  }
+
+  function lookupMember(id) {
+    let m = MOCK.students.find(s => s.id === id);
+    if (m) return { id: m.id, name: m.name, dept: m.dept, kind: 'Student' };
+    let e = MOCK.employees.find(s => s.id === id);
+    if (e) return { id: e.id, name: e.name, dept: e.dept, kind: 'Teacher' };
+    return null;
+  }
+
+  function wire() {
+    document.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => {
+      activeTab = b.dataset.tab; render();
+    }));
+
+    if (activeTab === 'issue') {
+      const lm = document.getElementById('lookup-member');
+      const ab = document.getElementById('add-book');
+      const ss = document.getElementById('sim-scan');
+      const di = document.getElementById('do-issue');
+      const ld = document.getElementById('loan-days');
+      if (lm) lm.onclick = () => {
+        const id = (document.getElementById('member-id').value || '').trim().toUpperCase();
+        const m = lookupMember(id);
+        if (!m) { alert('Member not found.'); return; }
+        currentMember = m; render();
+      };
+      if (ab) ab.onclick = () => {
+        const id = (document.getElementById('book-id').value || '').trim().toUpperCase();
+        if (!id) return;
+        if (!bookById(id)) { alert('Book not found.'); return; }
+        basket.push(id); document.getElementById('book-id').value = ''; render();
+      };
+      if (ss) ss.onclick = () => {
+        if (!currentMember) currentMember = lookupMember('S-1002');
+        const pick = books[Math.floor(Math.random()*books.length)];
+        basket.push(pick.id); render();
+      };
+      if (ld) ld.onchange = (e) => { loanDays = parseInt(e.target.value, 10); };
+      if (di) di.onclick = () => {
+        const myFines = fines.filter(f => f.userId === currentMember.id && !f.paid).reduce((s,f) => s+f.amount, 0);
+        if (myFines > 5) { alert('Blocked — unpaid fines.'); return; }
+        alert(`Issued ${basket.length} book(s) to ${currentMember.name} for ${loanDays} days. ✅`);
+        todaysIssues.unshift({ t: new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}), member: currentMember.name, book: bookById(basket[0]).title });
+        basket = []; render();
+      };
+      document.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => {
+        basket.splice(parseInt(b.dataset.rm,10), 1); render();
+      });
+      const ov = document.getElementById('override');
+      if (ov) ov.onclick = () => { alert('Override granted (stub) — proceeding.'); };
+    }
+
+    if (activeTab === 'return') {
+      const rs = document.getElementById('ret-scan');
+      const rl = document.getElementById('ret-lookup');
+      if (rs) rs.onclick = () => alert('Simulated scan: B-002 — overdue 3 days, ₼1.65 fee added.');
+      if (rl) rl.onclick = () => alert('Loan lookup (stub).');
+      document.querySelectorAll('[data-return]').forEach(b => b.onclick = () => {
+        alert(`Return confirmed for loan ${b.dataset.return}. ✅`);
+      });
+    }
+
+    if (activeTab === 'renew') {
+      document.querySelectorAll('[data-renew]').forEach(b => b.onclick = () => {
+        alert(`Loan ${b.dataset.renew} renewed +14 days. ✅`);
+      });
+    }
+
+    if (activeTab === 'lookup') {
+      const showResult = (q) => {
+        q = (q || '').trim().toUpperCase();
+        const out = document.getElementById('lookup-result');
+        const m = lookupMember(q);
+        const b = bookById(q) || books.find(bb => bb.title.toUpperCase().includes(q));
+        if (m) {
+          const myLoans = loans.filter(l => l.userId === m.id);
+          const myHolds = holds.filter(h => h.userId === m.id);
+          const myFines = fines.filter(f => f.userId === m.id);
+          out.innerHTML = `
+            ${renderMemberCard(m)}
+            <h3 class="mt-16">Active loans (${myLoans.filter(l=>l.status!=='Returned').length})</h3>
+            ${myLoans.filter(l=>l.status!=='Returned').map(l => {
+              const bk = bookById(l.book);
+              return `<div class="book-row"><div class="book-cover">${bk?bk.cover:'📖'}</div><div class="book-meta"><div class="ttl">${bk?bk.title:l.book}</div><div class="sub">Due ${UniFlow.fmt.date(l.due)} · <span class="badge ${l.status==='Overdue'?'danger':'info'}">${l.status}</span></div></div></div>`;
+            }).join('') || '<p class="empty">No active loans.</p>'}
+            <h3 class="mt-12">Holds (${myHolds.length})</h3>
+            ${myHolds.map(h => `<div class="book-row"><div class="book-cover">📖</div><div class="book-meta"><div class="ttl">${bookById(h.book)?.title || h.book}</div><div class="sub">Pos #${h.position} · ${h.status}</div></div></div>`).join('') || '<p class="empty">No holds.</p>'}
+            <h3 class="mt-12">Fines (${myFines.length})</h3>
+            ${myFines.map(f => `<div class="info-row"><div class="k">${f.reason}</div><div>₼${f.amount.toFixed(2)} ${f.paid?'<span class="badge success">Paid</span>':'<span class="badge danger">Unpaid</span>'}</div></div>`).join('') || '<p class="empty">No fines.</p>'}
+          `;
+        } else if (b) {
+          const borrowers = loans.filter(l => l.book === b.id && l.status !== 'Returned');
+          out.innerHTML = `
+            <div class="card">
+              <div class="row" style="gap:14px">
+                <div style="font-size:48px">${b.cover}</div>
+                <div style="flex:1">
+                  <h2 style="margin:0">${b.title}</h2>
+                  <p class="text-muted text-sm">${b.authors} · ${b.publisher}, ${b.year}</p>
+                  <div class="row" style="gap:18px;font-size:13px">
+                    <div><strong>${b.available}/${b.copies}</strong> available</div>
+                    <div>Shelf <strong>${b.shelf}</strong></div>
+                    <div>${b.eBook?'<span class="badge info">eBook</span>':''}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <h3 class="mt-16">Current borrowers</h3>
+            ${borrowers.map(l => `<div class="book-row"><div class="book-cover">👤</div><div class="book-meta"><div class="ttl">${l.userName}</div><div class="sub">${l.userId} · due ${UniFlow.fmt.date(l.due)} · ${l.status}</div></div></div>`).join('') || '<p class="empty">No active loans.</p>'}
+          `;
+        } else {
+          out.innerHTML = '<p class="empty">No match found.</p>';
+        }
+      };
+      const q = document.getElementById('lookup-q');
+      if (q) q.addEventListener('input', e => showResult(e.target.value));
+      document.querySelectorAll('[data-q]').forEach(b => b.onclick = () => {
+        document.getElementById('lookup-q').value = b.dataset.q;
+        showResult(b.dataset.q);
+      });
+    }
+  }
+
+  render();
+</script>
+</body></html>

@@ -17,6 +17,9 @@
       { section: 'Campus' },
       { href: '/static-mockups/student/attendance.html', label: 'Attendance', ic: '✅' },
       { href: '/static-mockups/student/payments.html', label: 'Tuition & Payments', ic: '💳' },
+      { href: '/static-mockups/student/cafeteria.html', label: 'Cafeteria', ic: '🍽️' },
+      { href: '/static-mockups/library/catalog.html', label: 'Library Catalogue', ic: '📚' },
+      { href: '/static-mockups/student/library.html', label: 'My Library', ic: '🔖' },
       { href: '/static-mockups/news/index.html', label: 'News', ic: '📰' },
       { href: '/static-mockups/events/index.html', label: 'Events', ic: '🎟️' },
       { href: '/static-mockups/mobile-app/index.html', label: 'Mobile App', ic: '📱' },
@@ -39,6 +42,7 @@
       { href: '/static-mockups/admin/finance.html', label: 'Finance', ic: '💰' },
       { href: '/static-mockups/admin/hr.html', label: 'HR', ic: '👥' },
       { href: '/static-mockups/admin/attendance.html', label: 'Attendance', ic: '✅' },
+      { href: '/static-mockups/admin/cafeteria-pos.html', label: 'Cafeteria POS', ic: '🍽️' },
       { href: '/static-mockups/news/index.html', label: 'News & CMS', ic: '📰' },
       { href: '/static-mockups/events/index.html', label: 'Events', ic: '🎟️' },
       { section: 'Academic' },
@@ -53,6 +57,22 @@
     HR: [
       { section: 'HR' },
       { href: '/static-mockups/admin/hr.html', label: 'Employees', ic: '👥' },
+    ],
+    Library: [
+      { section: 'Library' },
+      { href: '/static-mockups/library/dashboard.html', label: 'Dashboard', ic: '📊' },
+      { href: '/static-mockups/library/circulation.html', label: 'Circulation Desk', ic: '🔄' },
+      { href: '/static-mockups/library/catalog-manage.html', label: 'Catalogue', ic: '📚' },
+      { href: '/static-mockups/library/members.html', label: 'Members', ic: '👥' },
+      { href: '/static-mockups/library/catalog.html', label: 'Public Catalogue', ic: '🔍' },
+    ],
+    Cafeteria: [
+      { section: 'Cafeteria' },
+      { href: '/static-mockups/cafeteria/orders.html', label: 'Incoming Orders', ic: '🧾' },
+      { href: '/static-mockups/cafeteria/products.html', label: 'Products', ic: '🍔' },
+      { href: '/static-mockups/cafeteria/supplies.html', label: 'Supplies & Needs', ic: '📦' },
+      { href: '/static-mockups/cafeteria/revenue.html', label: 'Revenue', ic: '📈' },
+      { href: '/static-mockups/admin/cafeteria-pos.html', label: 'Cashier POS', ic: '🍽️' },
     ],
   };
 
@@ -74,7 +94,7 @@
         <div class="nav-section" style="margin-top:24px">Switch Role (demo)</div>
         <div style="padding:0 8px">
           <select id="role-switch" class="role-switch" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--bg);font:inherit">
-            ${['Student','Teacher','Admin','Finance','HR'].map(r => `<option ${r===ROLE?'selected':''}>${r}</option>`).join('')}
+            ${['Student','Teacher','Admin','Finance','HR','Cafeteria','Library'].map(r => `<option ${r===ROLE?'selected':''}>${r}</option>`).join('')}
           </select>
         </div>
       </aside>

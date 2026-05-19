@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>Cafeteria POS — UniFlow</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static-mockups/assets/css/styles.css">
+<style>
+  .scanner { aspect-ratio: 1/1; max-width: 320px; margin: 0 auto; background: #0B1220; border-radius: 16px; position: relative; overflow: hidden; display: grid; place-items: center; color: #fff; }
+  .scanner::before { content:''; position:absolute; inset:14%; border: 2px solid rgba(255,255,255,.6); border-radius: 12px; }
+  .scanner .line { position: absolute; left: 14%; right: 14%; height: 2px; background: linear-gradient(90deg, transparent, #1A5AD7, transparent); animation: scan 2s ease-in-out infinite; box-shadow: 0 0 14px #1A5AD7; }
+  @keyframes scan { 0%,100% { top: 16%; } 50% { top: 82%; } }
+  .scanner .hint { position: absolute; bottom: 12px; left: 0; right: 0; text-align: center; font-size: 12px; color: rgba(255,255,255,.7); }
+  .feed { max-height: 280px; overflow-y: auto; }
+  .feed .item { display: flex; gap: 10px; padding: 10px; border-bottom: 1px dashed var(--border); font-size: 13px; align-items: center; }
+  .feed .item:last-child { border-bottom: none; }
+  .feed .item.ok { background: rgba(22,163,74,.06); }
+  .feed .item.err { background: rgba(220,38,38,.06); }
+  .pin { display: flex; gap: 6px; justify-content: center; margin: 16px 0; }
+  .pin input { width: 36px; height: 44px; text-align: center; font-size: 18px; font-weight: 700; border: 1px solid var(--border); border-radius: 8px; }
+  .mode-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 999px; padding: 3px; background: var(--bg); }
+  .mode-toggle button { background: none; border: none; padding: 6px 14px; border-radius: 999px; font: inherit; font-weight: 500; cursor: pointer; color: var(--muted); }
+  .mode-toggle button.active { background: var(--primary); color: #fff; }
+</style>
+</head><body>
+<script src="/static-mockups/assets/js/mock-data.js"></script>
+<script src="/static-mockups/assets/js/app.js"></script>
+<script>
+  UniFlow.renderShell({ title: 'Cafeteria POS — Cashier' });
+
+  // ---- Pretend recent scan log ----
+  let log = [
+    { ts: new Date(Date.now() - 60_000),   sid: 'S-1005', name: 'Nigar Suleymanli', total: 4.20, status: 'ok',  ref: 'CO-2118' },
+    { ts: new Date(Date.now() - 180_000),  sid: 'S-1003', name: 'Lale Mammadova',   total: 6.10, status: 'ok',  ref: 'CO-2117' },
+    { ts: new Date(Date.now() - 320_000),  sid: 'S-1006', name: 'Tural Ismayilov',  total: 5.40, status: 'err', ref: 'insufficient balance' },
+    { ts: new Date(Date.now() - 410_000),  sid: 'S-1001', name: 'Aysel Quliyeva',   total: 3.60, status: 'ok',  ref: 'CO-2114' },
+  ];
+
+  const total = log.filter(l => l.status === 'ok').reduce((s,l) => s + l.total, 0);
+  const okCount = log.filter(l => l.status === 'ok').length;
+
+  UniFlow.setContent(`
+    <div class="grid kpi">
+      <div class="card kpi-card"><div class="label">Open shift</div><div class="value">Main Canteen · Reg 2</div><div class="delta">since 07:30</div></div>
+      <div class="card kpi-card"><div class="label">Sales this shift</div><div class="value">${'₼' + (total + 412.80).toFixed(2)}</div><div class="delta up">+₼${total.toFixed(2)} in last 10 min</div></div>
+      <div class="card kpi-card"><div class="label">Transactions</div><div class="value">${okCount + 124}</div><div class="delta">${okCount} just now</div></div>
+      <div class="card kpi-card"><div class="label">QR throughput</div><div class="value">~2.1s</div><div class="delta">avg scan→confirm</div></div>
+    </div>
+
+    <div class="grid two mt-16" style="grid-template-columns: 1fr 1.2fr">
+      <div class="card">
+        <div class="row between">
+          <h2>Scan student QR</h2>
+          <div class="mode-toggle"><button class="active" data-mode="qr">📷 QR</button><button data-mode="id">⌨️ ID</button></div>
+        </div>
+
+        <div id="mode-qr" class="mt-16">
+          <div class="scanner">
+            <div class="line"></div>
+            <div style="text-align:center;font-size:13px;opacity:.85">Hold QR code in the frame<br><span style="opacity:.6">camera placeholder</span></div>
+            <div class="hint">Auto-detect · WebRTC stub</div>
+          </div>
+          <div class="row mt-16" style="justify-content:center">
+            <button class="btn primary" id="sim-scan">Simulate successful scan</button>
+            <button class="btn ghost" id="sim-fail">Simulate insufficient balance</button>
+          </div>
+          <p class="text-muted text-sm mt-12" style="text-align:center">Expected payload format: <code>UNIFLOW|PAY|&lt;studentId&gt;|&lt;orderId&gt;|&lt;amount&gt;</code></p>
+        </div>
+
+        <div id="mode-id" class="mt-16" style="display:none">
+          <div class="field"><label>Student ID</label><input id="manual-id" type="text" placeholder="e.g. S-1001"></div>
+          <div class="field"><label>Amount (₼)</label><input id="manual-amt" type="number" step="0.10" value="4.50"></div>
+          <div class="field"><label>4-digit confirmation PIN (from student app)</label>
+            <div class="pin">${[0,1,2,3].map(i => `<input maxlength="1" data-pin="${i}">`).join('')}</div>
+          </div>
+          <button class="btn primary" id="manual-charge" style="width:100%">Charge ₼<span id="manual-amt-out">4.50</span></button>
+        </div>
+      </div>
+
+      <div>
+        <div class="card">
+          <div class="row between"><h2>Recent transactions</h2><button class="btn ghost btn-sm" onclick="alert('Export shift report (stub)')">Export shift</button></div>
+          <div class="feed mt-12" id="feed"></div>
+        </div>
+
+        <div class="card mt-16">
+          <h2>Day-end reconciliation</h2>
+          <div class="info-row"><div class="k">Cash drawer</div><div>₼ 0.00 (cashless register)</div></div>
+          <div class="info-row"><div class="k">LMS balance charges</div><div>₼ 318.40 · 86 orders</div></div>
+          <div class="info-row"><div class="k">QR payments</div><div>₼ 94.40 · 28 orders</div></div>
+          <div class="info-row"><div class="k">Refunds</div><div>₼ 0.00</div></div>
+          <div class="info-row"><div class="k">Net</div><div><strong>₼ 412.80</strong></div></div>
+          <p class="text-muted text-sm mt-12">Settled to the Finance module nightly at 23:30.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Confirmation modal -->
+    <div id="cmodal" class="modal-wrap" style="position:fixed;inset:0;background:rgba(11,18,32,.55);display:none;align-items:center;justify-content:center;z-index:100;padding:16px">
+      <div class="card" style="max-width:420px;width:100%">
+        <h2>Charge student?</h2>
+        <div class="info-row"><div class="k">Student</div><div id="cm-name"></div></div>
+        <div class="info-row"><div class="k">Student ID</div><div><code id="cm-id"></code></div></div>
+        <div class="info-row"><div class="k">Order</div><div><code id="cm-ref"></code></div></div>
+        <div class="info-row"><div class="k">Amount</div><div id="cm-amt" style="font-weight:700;font-size:18px;color:var(--primary)"></div></div>
+        <div class="info-row"><div class="k">LMS balance</div><div id="cm-bal"></div></div>
+        <div class="row end mt-16">
+          <button class="btn ghost" id="cm-cancel">Cancel</button>
+          <button class="btn primary" id="cm-confirm">Confirm charge</button>
+        </div>
+      </div>
+    </div>
+  `);
+
+  function renderFeed() {
+    document.getElementById('feed').innerHTML = log.map(l => `<div class="item ${l.status}">
+      <span style="font-size:18px">${l.status === 'ok' ? '✅' : '❌'}</span>
+      <div style="flex:1">
+        <div><strong>${l.name}</strong> <span class="text-muted text-sm">${l.sid}</span></div>
+        <div class="text-muted text-sm">${l.status === 'ok' ? l.ref : 'Declined — ' + l.ref}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-weight:700">${l.status === 'ok' ? '₼'+l.total.toFixed(2) : '—'}</div>
+        <div class="text-muted text-sm">${l.ts.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</div>
+      </div>
+    </div>`).join('');
+  }
+  renderFeed();
+
+  // Mode toggle
+  document.querySelectorAll('[data-mode]').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('[data-mode]').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    document.getElementById('mode-qr').style.display = b.dataset.mode === 'qr' ? 'block' : 'none';
+    document.getElementById('mode-id').style.display = b.dataset.mode === 'id' ? 'block' : 'none';
+  }));
+
+  // PIN auto-advance
+  document.querySelectorAll('[data-pin]').forEach((inp, i, all) => {
+    inp.addEventListener('input', () => { if (inp.value && all[i+1]) all[i+1].focus(); });
+  });
+  document.getElementById('manual-amt').addEventListener('input', e => { document.getElementById('manual-amt-out').textContent = parseFloat(e.target.value || 0).toFixed(2); });
+
+  // Open confirmation
+  const cmodal = document.getElementById('cmodal');
+  function openConfirm({ sid, name, ref, amount, balance }) {
+    document.getElementById('cm-name').textContent = name;
+    document.getElementById('cm-id').textContent = sid;
+    document.getElementById('cm-ref').textContent = ref;
+    document.getElementById('cm-amt').textContent = '₼' + amount.toFixed(2);
+    document.getElementById('cm-bal').textContent = '₼' + balance.toFixed(2) + (balance < amount ? '  ⚠️ insufficient' : '');
+    document.getElementById('cm-confirm').onclick = () => {
+      if (balance < amount) { log.unshift({ ts: new Date(), sid, name, total: amount, status: 'err', ref: 'insufficient balance' }); }
+      else { log.unshift({ ts: new Date(), sid, name, total: amount, status: 'ok', ref }); }
+      renderFeed(); cmodal.style.display = 'none';
+    };
+    cmodal.style.display = 'flex';
+  }
+  document.getElementById('cm-cancel').onclick = () => cmodal.style.display = 'none';
+
+  document.getElementById('sim-scan').onclick = () => openConfirm({
+    sid: 'S-1001', name: 'Aysel Quliyeva', ref: 'CO-' + (2120 + Math.floor(Math.random()*50)),
+    amount: 4.20 + Math.random() * 3, balance: 42.50
+  });
+  document.getElementById('sim-fail').onclick = () => openConfirm({
+    sid: 'S-1006', name: 'Tural Ismayilov', ref: 'CO-' + (2120 + Math.floor(Math.random()*50)),
+    amount: 8.40, balance: 1.10
+  });
+  document.getElementById('manual-charge').onclick = () => {
+    const sid = (document.getElementById('manual-id').value || 'S-1002').trim();
+    const amt = parseFloat(document.getElementById('manual-amt').value || '0');
+    const stu = MOCK.students.find(s => s.id === sid) || { id: sid, name: 'Unknown student' };
+    openConfirm({ sid: stu.id, name: stu.name, ref: 'CO-MAN-' + Date.now().toString().slice(-4), amount: amt, balance: 25.00 });
+  };
+</script>
+</body></html>

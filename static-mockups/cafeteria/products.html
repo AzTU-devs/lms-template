@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>Cafeteria — Products — UniFlow</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static-mockups/assets/css/styles.css">
+<style>
+  .switch { position: relative; display: inline-block; width: 38px; height: 22px; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .switch .slider { position: absolute; cursor: pointer; inset: 0; background: var(--border); border-radius: 999px; transition: .2s; }
+  .switch .slider::before { content: ''; position: absolute; height: 16px; width: 16px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: .2s; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+  .switch input:checked + .slider { background: var(--success); }
+  .switch input:checked + .slider::before { transform: translateX(16px); }
+  .pemoji { font-size: 22px; }
+  .modal-wrap { position: fixed; inset: 0; background: rgba(11,18,32,.55); display: none; align-items: center; justify-content: center; z-index: 100; padding: 16px; }
+  .modal-wrap.open { display: flex; }
+  .modal { background: var(--surface); border-radius: 14px; padding: 22px; max-width: 520px; width: 100%; max-height: 92vh; overflow-y: auto; box-shadow: var(--shadow-md); }
+</style>
+</head><body>
+<script src="/static-mockups/assets/js/mock-data.js"></script>
+<script src="/static-mockups/assets/js/app.js"></script>
+<script>
+  UniFlow.renderShell({ title: 'Products' });
+
+  // Merge menu + meta
+  let products = MOCK.cafeteriaMenu.map(m => Object.assign({}, m, MOCK.cafeteriaProductMeta[m.id] || {}));
+  const supplierName = id => (MOCK.cafeteriaSuppliers.find(s => s.id === id) || {}).name || '—';
+  function money(n) { return '₼' + n.toFixed(2); }
+
+  let view = 'table';   // table | cards
+  let cat = 'All';
+  let activeOnly = false;
+  let lowOnly = false;
+  let q = '';
+
+  const cats = ['All', ...new Set(products.map(p => p.cat))];
+
+  function stockBadge(p) {
+    if (p.stock <= 0) return '<span class="badge danger">Out</span>';
+    if (p.stock < 8) return '<span class="badge warn">Low · ' + p.stock + '</span>';
+    return '<span class="badge success">' + p.stock + ' in stock</span>';
+  }
+  function marginPct(p) { return p.price > 0 ? Math.round((1 - p.cost / p.price) * 100) : 0; }
+  function marginColor(p) { const m = marginPct(p); return m < 30 ? 'var(--danger)' : m < 50 ? 'var(--warn)' : 'var(--success)'; }
+
+  UniFlow.setContent(`
+    <div class="grid kpi">
+      <div class="card kpi-card"><div class="label">Active products</div><div class="value" id="k-active">0</div><div class="delta">on the menu right now</div></div>
+      <div class="card kpi-card"><div class="label">Out of stock</div><div class="value" style="color:var(--danger)" id="k-out">0</div><div class="delta">disabled automatically</div></div>
+      <div class="card kpi-card"><div class="label">Low stock (&lt;8)</div><div class="value" style="color:var(--warn)" id="k-low">0</div><div class="delta">restock today</div></div>
+      <div class="card kpi-card"><div class="label">Avg margin</div><div class="value" id="k-margin">—</div><div class="delta">price − cost</div></div>
+    </div>
+
+    <div class="card mt-16">
+      <div class="row between">
+        <h2>Catalogue</h2>
+        <div class="row">
+          <div class="mode-toggle" style="display:inline-flex;border:1px solid var(--border);border-radius:999px;padding:3px;background:var(--bg)">
+            <button id="v-table" class="active" style="background:var(--primary);color:#fff;border:none;padding:6px 14px;border-radius:999px;font-weight:500;cursor:pointer">Table</button>
+            <button id="v-cards" style="background:none;border:none;padding:6px 14px;border-radius:999px;font-weight:500;cursor:pointer;color:var(--muted)">Cards</button>
+          </div>
+          <button class="btn ghost" onclick="alert('Import CSV (stub)')">Import</button>
+          <button class="btn ghost" onclick="alert('Export CSV (stub)')">Export</button>
+          <button class="btn primary" id="add-product">+ New product</button>
+        </div>
+      </div>
+
+      <div class="filters mt-12">
+        <div class="field flex-1"><label>Search</label><input id="q" type="search" placeholder="name, ID, supplier…"></div>
+        <div class="field"><label>Category</label><select id="f-cat">${cats.map(c => `<option>${c}</option>`).join('')}</select></div>
+        <div class="field"><label>Status</label>
+          <select id="f-status"><option value="all">All</option><option value="active">Active only</option><option value="inactive">Inactive</option></select>
+        </div>
+        <div class="field" style="align-self:end">
+          <label class="text-sm"><input type="checkbox" id="f-low"> Low / out of stock only</label>
+        </div>
+      </div>
+
+      <div id="content-table"></div>
+      <div id="content-cards" style="display:none"></div>
+    </div>
+
+    <!-- Editor modal -->
+    <div id="modal" class="modal-wrap">
+      <div class="modal">
+        <div class="row between"><h2 id="m-title">Edit product</h2><button class="btn ghost btn-sm" id="m-close">✕</button></div>
+        <div class="grid two mt-16" style="gap:10px">
+          <div class="field"><label>Emoji / image</label><input id="m-emoji" maxlength="4"></div>
+          <div class="field"><label>Category</label><select id="m-cat">${cats.filter(c => c !== 'All').map(c => `<option>${c}</option>`).join('')}</select></div>
+        </div>
+        <div class="field"><label>Name</label><input id="m-name"></div>
+        <div class="grid two" style="gap:10px">
+          <div class="field"><label>Price (₼)</label><input id="m-price" type="number" step="0.10" min="0"></div>
+          <div class="field"><label>Cost (₼)</label><input id="m-cost" type="number" step="0.10" min="0"></div>
+          <div class="field"><label>Stock on hand</label><input id="m-stock" type="number" step="1" min="0"></div>
+          <div class="field"><label>Prep time (min)</label><input id="m-prep" type="number" step="1" min="0"></div>
+        </div>
+        <div class="field"><label>Calories (kcal)</label><input id="m-kcal" type="number"></div>
+        <div class="field"><label>Allergens (comma separated)</label><input id="m-allergens" placeholder="gluten, dairy, egg…"></div>
+        <div class="field"><label>Supplier</label>
+          <select id="m-supplier">${MOCK.cafeteriaSuppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}</select>
+        </div>
+        <div class="row" style="align-items:center;margin-top:6px">
+          <label class="switch"><input type="checkbox" id="m-active"><span class="slider"></span></label>
+          <span>Visible on student menu</span>
+        </div>
+        <div class="row end mt-16">
+          <button class="btn danger" id="m-delete" style="margin-right:auto">Delete</button>
+          <button class="btn ghost" id="m-cancel">Cancel</button>
+          <button class="btn primary" id="m-save">Save</button>
+        </div>
+      </div>
+    </div>
+  `);
+
+  function refresh() {
+    const filtered = products.filter(p =>
+      (cat === 'All' || p.cat === cat) &&
+      (!q || (p.name + ' ' + p.id + ' ' + supplierName(p.supplier)).toLowerCase().includes(q)) &&
+      (!activeOnly || p.active) &&
+      (!lowOnly || p.stock < 8)
+    );
+    document.getElementById('content-table').innerHTML = `
+      <div class="table-wrap mt-12">
+        <table class="data">
+          <thead><tr><th></th><th>Name</th><th>Category</th><th>Price</th><th>Cost</th><th>Margin</th><th>Stock</th><th>Supplier</th><th>Visible</th><th></th></tr></thead>
+          <tbody>
+            ${filtered.length === 0 ? '<tr><td colspan="10" class="text-muted" style="text-align:center;padding:24px">No products match.</td></tr>' :
+              filtered.map(p => `<tr>
+                <td class="pemoji">${p.emoji}</td>
+                <td><strong>${p.name}</strong><br><span class="text-muted text-sm"><code>${p.id}</code> · ${p.kcal} kcal</span></td>
+                <td><span class="badge muted">${p.cat}</span></td>
+                <td>${money(p.price)}</td>
+                <td>${money(p.cost)}</td>
+                <td><strong style="color:${marginColor(p)}">${marginPct(p)}%</strong></td>
+                <td>${stockBadge(p)}</td>
+                <td><span class="text-sm">${supplierName(p.supplier)}</span></td>
+                <td><label class="switch"><input type="checkbox" ${p.active ? 'checked' : ''} data-toggle="${p.id}"><span class="slider"></span></label></td>
+                <td><button class="btn ghost btn-sm" data-edit="${p.id}">Edit</button></td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    document.getElementById('content-cards').innerHTML = filtered.length === 0
+      ? '<div class="empty mt-16"><div class="emoji">🤷</div>No products match.</div>'
+      : `<div class="grid three mt-12">${filtered.map(p => `<div class="card" style="display:flex;flex-direction:column;gap:6px">
+          <div class="row between">
+            <span style="font-size:32px">${p.emoji}</span>
+            <label class="switch"><input type="checkbox" ${p.active ? 'checked' : ''} data-toggle="${p.id}"><span class="slider"></span></label>
+          </div>
+          <strong>${p.name}</strong>
+          <div class="text-muted text-sm">${p.cat} · ${p.kcal} kcal</div>
+          <div class="row between mt-12">
+            <div><div class="text-muted text-sm">Price</div><div style="font-weight:700">${money(p.price)}</div></div>
+            <div><div class="text-muted text-sm">Margin</div><div style="font-weight:700;color:${marginColor(p)}">${marginPct(p)}%</div></div>
+            <div>${stockBadge(p)}</div>
+          </div>
+          <div class="row between mt-12">
+            <span class="text-muted text-sm">${supplierName(p.supplier)}</span>
+            <button class="btn ghost btn-sm" data-edit="${p.id}">Edit</button>
+          </div>
+        </div>`).join('')}</div>`;
+
+    // KPIs
+    document.getElementById('k-active').textContent = products.filter(p => p.active).length;
+    document.getElementById('k-out').textContent    = products.filter(p => p.stock <= 0).length;
+    document.getElementById('k-low').textContent    = products.filter(p => p.stock > 0 && p.stock < 8).length;
+    const avg = Math.round(products.reduce((s,p) => s + marginPct(p), 0) / products.length);
+    document.getElementById('k-margin').textContent = avg + '%';
+
+    // Bind row controls
+    document.querySelectorAll('[data-toggle]').forEach(ch => ch.addEventListener('change', () => {
+      const p = products.find(x => x.id === ch.dataset.toggle); p.active = ch.checked; refresh();
+    }));
+    document.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => openEditor(b.dataset.edit)));
+  }
+
+  // Filters
+  document.getElementById('q').addEventListener('input', e => { q = e.target.value.trim().toLowerCase(); refresh(); });
+  document.getElementById('f-cat').addEventListener('change', e => { cat = e.target.value; refresh(); });
+  document.getElementById('f-status').addEventListener('change', e => { const v = e.target.value; activeOnly = v === 'active'; if (v === 'inactive') { activeOnly = false; products = products.map(p => p); /* simple: filter inline */ refresh(); return; } refresh(); });
+  document.getElementById('f-low').addEventListener('change', e => { lowOnly = e.target.checked; refresh(); });
+
+  // View toggle
+  document.getElementById('v-table').addEventListener('click', () => setView('table'));
+  document.getElementById('v-cards').addEventListener('click', () => setView('cards'));
+  function setView(v) {
+    view = v;
+    const t = document.getElementById('v-table'), c = document.getElementById('v-cards');
+    if (v === 'table') { t.style.background='var(--primary)'; t.style.color='#fff'; c.style.background='none'; c.style.color='var(--muted)'; document.getElementById('content-table').style.display='block'; document.getElementById('content-cards').style.display='none'; }
+    else { c.style.background='var(--primary)'; c.style.color='#fff'; t.style.background='none'; t.style.color='var(--muted)'; document.getElementById('content-table').style.display='none'; document.getElementById('content-cards').style.display='block'; }
+  }
+
+  // Editor
+  const modal = document.getElementById('modal');
+  let editingId = null;
+  function openEditor(id) {
+    const p = id ? products.find(x => x.id === id) : { id: 'M-' + (products.length + 1), emoji: '🍽️', name: '', cat: 'Hot meals', price: 0, cost: 0, kcal: 0, stock: 0, prepMin: 5, allergens: [], active: true, supplier: 'SUP-3' };
+    editingId = id;
+    document.getElementById('m-title').textContent = id ? 'Edit product' : 'New product';
+    document.getElementById('m-delete').style.display = id ? 'inline-flex' : 'none';
+    document.getElementById('m-emoji').value = p.emoji;
+    document.getElementById('m-cat').value = p.cat;
+    document.getElementById('m-name').value = p.name;
+    document.getElementById('m-price').value = p.price;
+    document.getElementById('m-cost').value = p.cost;
+    document.getElementById('m-stock').value = p.stock;
+    document.getElementById('m-prep').value = p.prepMin || 5;
+    document.getElementById('m-kcal').value = p.kcal;
+    document.getElementById('m-allergens').value = (p.allergens || []).join(', ');
+    document.getElementById('m-supplier').value = p.supplier || 'SUP-3';
+    document.getElementById('m-active').checked = !!p.active;
+    modal.classList.add('open');
+  }
+  document.getElementById('add-product').addEventListener('click', () => openEditor(null));
+  document.getElementById('m-close').addEventListener('click', () => modal.classList.remove('open'));
+  document.getElementById('m-cancel').addEventListener('click', () => modal.classList.remove('open'));
+  document.getElementById('m-delete').addEventListener('click', () => {
+    if (!editingId || !confirm('Delete this product? This cannot be undone.')) return;
+    products = products.filter(p => p.id !== editingId);
+    modal.classList.remove('open'); refresh();
+  });
+  document.getElementById('m-save').addEventListener('click', () => {
+    const data = {
+      id: editingId || 'M-' + (Date.now().toString().slice(-4)),
+      emoji: document.getElementById('m-emoji').value || '🍽️',
+      cat: document.getElementById('m-cat').value,
+      name: document.getElementById('m-name').value.trim() || 'New product',
+      price: parseFloat(document.getElementById('m-price').value) || 0,
+      cost: parseFloat(document.getElementById('m-cost').value) || 0,
+      stock: parseInt(document.getElementById('m-stock').value) || 0,
+      prepMin: parseInt(document.getElementById('m-prep').value) || 0,
+      kcal: parseInt(document.getElementById('m-kcal').value) || 0,
+      allergens: document.getElementById('m-allergens').value.split(',').map(s => s.trim()).filter(Boolean),
+      supplier: document.getElementById('m-supplier').value,
+      active: document.getElementById('m-active').checked,
+    };
+    if (editingId) products = products.map(p => p.id === editingId ? Object.assign({}, p, data) : p);
+    else products.unshift(data);
+    modal.classList.remove('open'); refresh();
+  });
+
+  refresh();
+</script>
+</body></html>

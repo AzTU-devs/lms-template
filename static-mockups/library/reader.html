@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>Reader — UniFlow</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static-mockups/assets/css/styles.css">
+<style>
+  .reader-shell { display: grid; grid-template-columns: 240px 1fr; gap: 16px; }
+  .reader-sidebar { position: sticky; top: 76px; align-self: start; max-height: calc(100vh - 92px); overflow-y: auto; }
+  .reader-sidebar .card { padding: 14px; }
+  .toc-list, .bm-list, .note-list { list-style: none; margin: 0; padding: 0; }
+  .toc-list li { padding: 8px 10px; border-radius: 8px; font-size: 13px; cursor: pointer; line-height: 1.35; }
+  .toc-list li:hover { background: var(--bg); }
+  .toc-list li.current { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
+  .bm-list li, .note-list li { padding: 8px; border-bottom: 1px dashed var(--border); font-size: 12px; }
+  .bm-list li:last-child, .note-list li:last-child { border-bottom: none; }
+  .note-list .snippet { color: var(--muted); font-style: italic; font-size: 11px; margin-bottom: 3px; }
+  .reader-main { min-width: 0; }
+  .ctrl-bar { position: sticky; top: 60px; z-index: 5; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; box-shadow: var(--shadow-sm); }
+  .ctrl-bar .row { gap: 8px; align-items: center; flex-wrap: wrap; }
+  .ctrl-bar .btn-sm { padding: 5px 10px; font-size: 12px; }
+  .ctrl-bar .meta { font-size: 13px; }
+  .ctrl-bar .meta .t { font-weight: 600; }
+  .ctrl-bar .meta .a { color: var(--muted); font-size: 12px; }
+  .progress-bar { height: 4px; background: var(--border); border-radius: 0 0 12px 12px; overflow: hidden; margin: 10px -16px -12px; }
+  .progress-bar > div { height: 100%; background: var(--primary); transition: width .3s; }
+  .reader-page { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; margin-top: 14px; padding: 48px 56px; min-height: 480px; }
+  .reader-page.theme-sepia { background: #f5ecd7; color: #4a3a22; border-color: #e0d4b8; }
+  .reader-page.theme-dark { background: #1a1d24; color: #d6d8de; border-color: #2c303a; }
+  .reader-page .ch-title { font-family: 'Source Serif 4', Georgia, serif; font-size: 26px; font-weight: 600; margin: 0 0 24px; line-height: 1.2; }
+  .reader-page .ch-body { font-family: 'Source Serif 4', Georgia, serif; line-height: 1.75; max-width: 660px; margin: 0 auto; }
+  .reader-page .ch-body p { margin: 0 0 18px; }
+  .reader-page .ch-body mark { background: #ffe28a; padding: 0 2px; border-radius: 2px; }
+  .reader-page.theme-dark .ch-body mark { background: #6b5a1a; color: #fff5c4; }
+  .nav-row { display: flex; justify-content: space-between; align-items: center; margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--border); }
+  .reader-page.theme-sepia .nav-row { border-color: #d6c89e; }
+  .reader-page.theme-dark .nav-row { border-color: #2c303a; }
+  .reader-foot { margin-top: 14px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+  .sel-toolbar { position: absolute; display: none; background: #0b1220; color: #fff; border-radius: 8px; padding: 6px; gap: 4px; box-shadow: var(--shadow-md); z-index: 50; }
+  .sel-toolbar.show { display: flex; }
+  .sel-toolbar button { background: transparent; border: none; color: #fff; padding: 5px 10px; font: inherit; font-size: 12px; cursor: pointer; border-radius: 4px; }
+  .sel-toolbar button:hover { background: #2a3142; }
+  .ctrl-bar select { padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border); font: inherit; font-size: 12px; background: var(--surface); }
+  @media (max-width: 900px) {
+    .reader-shell { grid-template-columns: 1fr; }
+    .reader-sidebar { position: relative; top: 0; max-height: none; }
+    .reader-page { padding: 24px 18px; }
+  }
+</style>
+</head><body>
+<script src="/static-mockups/assets/js/mock-data.js"></script>
+<script src="/static-mockups/assets/js/app.js"></script>
+<script>
+  UniFlow.renderShell({ title: 'Reader' });
+
+  // ---- Resolve book ----
+  const params = new URLSearchParams(window.location.search);
+  const bookId = params.get('b') || 'B-001';
+  const book = MOCK.libraryBooks.find(b => b.id === bookId) || MOCK.libraryBooks[0];
+
+  // ---- Chapter content (synthesize if missing) ----
+  let chapters = MOCK.libraryBookContent[book.id];
+  if (!chapters) {
+    const para = book.summary;
+    chapters = [
+      { title: 'Chapter 1 — Introduction', body: para + '\n\nThis opening chapter sets the stage for the work that follows, introducing the central themes, the historical context, and the framing devices the author will return to throughout. Readers new to the subject will find here an accessible entry point; those already familiar will recognise the careful re-statement of foundational ideas.' },
+      { title: 'Chapter 2 — Core Concepts', body: 'Building on the introduction, this chapter develops the principal arguments in greater depth. ' + para + '\n\nWe move from the broad sketch into the specifics: the vocabulary, the methods, and the worked examples that make the discipline tractable for the careful student.' },
+      { title: 'Chapter 3 — Applications', body: 'Here we turn from theory to practice. The frameworks laid out in earlier chapters are applied to real problems, and the limits of those frameworks are explored.\n\n' + para + '\n\nThe chapter closes with exercises and pointers to further reading.' },
+    ];
+  }
+
+  // ---- Persistence ----
+  const STORE_KEY = 'uniflow.reader.' + book.id;
+  const state = Object.assign(
+    { chapter: 0, fontSize: 17, theme: 'light', bookmarks: [], notes: [], highlights: [], sessions: 0 },
+    JSON.parse(localStorage.getItem(STORE_KEY) || '{}')
+  );
+  state.sessions = (state.sessions || 0) + 1;
+  function save() { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+
+  function escapeHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  function applyHighlights(body) {
+    let out = escapeHtml(body);
+    const highlights = (state.highlights || []).filter(h => h.chapter === state.chapter);
+    highlights.forEach(h => {
+      const safe = escapeHtml(h.text);
+      out = out.split(safe).join('<mark>' + safe + '</mark>');
+    });
+    return out;
+  }
+
+  function render() {
+    const ch = chapters[state.chapter];
+    const pct = Math.round(((state.chapter + 1) / chapters.length) * 100);
+    const minutesPerChapter = 6;
+    const minsLeft = (chapters.length - state.chapter - 1) * minutesPerChapter + Math.ceil(minutesPerChapter / 2);
+
+    const tocHtml = chapters.map((c, i) =>
+      '<li data-ch="' + i + '" class="' + (i === state.chapter ? 'current' : '') + '">' + c.title + '</li>'
+    ).join('');
+
+    const bmHtml = state.bookmarks.length
+      ? state.bookmarks.map((bm, i) =>
+          '<li><div><b>Ch ' + (bm.chapter + 1) + '</b> · ' + chapters[bm.chapter].title.replace(/^Chapter \d+ — /,'').replace(/^Book \w+ — /,'').slice(0, 28) + '…</div>' +
+          '<div class="row" style="gap:4px;margin-top:4px"><button class="btn btn-sm ghost" data-bm-go="' + i + '">Open</button>' +
+          '<button class="btn btn-sm ghost" data-bm-del="' + i + '">✕</button></div></li>'
+        ).join('')
+      : '<li class="text-muted text-sm">No bookmarks yet.</li>';
+
+    const noteHtml = state.notes.length
+      ? state.notes.map((n, i) =>
+          '<li><div class="snippet">"' + escapeHtml(n.snippet.slice(0, 60)) + (n.snippet.length>60?'…':'') + '"</div>' +
+          '<div>' + escapeHtml(n.text) + '</div>' +
+          '<div class="row" style="gap:4px;margin-top:4px"><button class="btn btn-sm ghost" data-note-go="' + i + '">Ch ' + (n.chapter + 1) + '</button>' +
+          '<button class="btn btn-sm ghost" data-note-del="' + i + '">✕</button></div></li>'
+        ).join('')
+      : '<li class="text-muted text-sm">No notes yet. Select text in the reader to add one.</li>';
+
+    const paragraphs = ch.body.split('\n\n').map(p => '<p>' + applyHighlights(p) + '</p>').join('');
+
+    UniFlow.setContent(
+      '<div class="reader-shell">' +
+        '<div class="reader-sidebar">' +
+          '<div class="card">' +
+            '<div style="font-size:13px;font-weight:700;margin-bottom:8px">Contents</div>' +
+            '<ul class="toc-list" id="toc">' + tocHtml + '</ul>' +
+          '</div>' +
+          '<div class="card mt-12">' +
+            '<div style="font-size:13px;font-weight:700;margin-bottom:8px">🔖 Bookmarks</div>' +
+            '<ul class="bm-list">' + bmHtml + '</ul>' +
+          '</div>' +
+          '<div class="card mt-12">' +
+            '<div style="font-size:13px;font-weight:700;margin-bottom:8px">📝 Notes</div>' +
+            '<ul class="note-list">' + noteHtml + '</ul>' +
+          '</div>' +
+          '<div class="card mt-12" style="background:var(--primary-soft)">' +
+            '<div class="text-sm" style="font-weight:600">Online sessions</div>' +
+            '<div style="font-size:22px;font-weight:700;color:var(--primary)">' + state.sessions + '</div>' +
+            '<div class="text-muted text-sm">on this title</div>' +
+          '</div>' +
+        '</div>' +
+
+        '<div class="reader-main">' +
+          '<div class="ctrl-bar">' +
+            '<div class="row between">' +
+              '<div class="meta">' +
+                '<div class="t">' + book.title + '</div>' +
+                '<div class="a">' + book.authors + '</div>' +
+              '</div>' +
+              '<div class="row" style="gap:6px">' +
+                '<button class="btn btn-sm ghost" id="font-dec">A−</button>' +
+                '<button class="btn btn-sm ghost" id="font-inc">A+</button>' +
+                '<select id="theme-sel">' +
+                  '<option value="light"' + (state.theme==='light'?' selected':'') + '>☀ Light</option>' +
+                  '<option value="sepia"' + (state.theme==='sepia'?' selected':'') + '>📜 Sepia</option>' +
+                  '<option value="dark"' + (state.theme==='dark'?' selected':'') + '>🌙 Dark</option>' +
+                '</select>' +
+                '<button class="btn btn-sm ghost" id="bookmark">🔖 Bookmark</button>' +
+                '<a class="btn btn-sm ghost" href="/static-mockups/library/catalog.html">← Catalogue</a>' +
+              '</div>' +
+            '</div>' +
+            '<div class="progress-bar"><div style="width:' + pct + '%"></div></div>' +
+          '</div>' +
+
+          '<div class="reader-page theme-' + state.theme + '" id="reader-page" style="font-size:' + state.fontSize + 'px">' +
+            '<h1 class="ch-title">' + ch.title + '</h1>' +
+            '<div class="ch-body" id="ch-body">' + paragraphs + '</div>' +
+            '<div class="nav-row">' +
+              '<button class="btn ghost" id="prev"' + (state.chapter === 0 ? ' disabled' : '') + '>← Previous</button>' +
+              '<span class="text-muted text-sm">Chapter ' + (state.chapter + 1) + ' of ' + chapters.length + '</span>' +
+              '<button class="btn primary" id="next"' + (state.chapter === chapters.length - 1 ? ' disabled' : '') + '>Next →</button>' +
+            '</div>' +
+          '</div>' +
+
+          '<div class="reader-foot">' +
+            '<div>⏱ ~' + minsLeft + ' min remaining</div>' +
+            '<div>' + pct + '% complete</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+
+      '<div class="sel-toolbar" id="sel-toolbar">' +
+        '<button data-sel="hl">✏️ Highlight</button>' +
+        '<button data-sel="note">📝 Add note</button>' +
+      '</div>'
+    );
+
+    // wire
+    document.querySelectorAll('#toc li').forEach(li => li.addEventListener('click', () => {
+      state.chapter = parseInt(li.dataset.ch, 10); save(); render();
+    }));
+    document.getElementById('font-dec').addEventListener('click', () => {
+      state.fontSize = Math.max(13, state.fontSize - 1); save(); render();
+    });
+    document.getElementById('font-inc').addEventListener('click', () => {
+      state.fontSize = Math.min(24, state.fontSize + 1); save(); render();
+    });
+    document.getElementById('theme-sel').addEventListener('change', e => {
+      state.theme = e.target.value; save(); render();
+    });
+    document.getElementById('bookmark').addEventListener('click', () => {
+      state.bookmarks.push({ chapter: state.chapter, when: new Date().toISOString() });
+      save(); render();
+    });
+    document.getElementById('prev').addEventListener('click', () => {
+      if (state.chapter > 0) { state.chapter--; save(); render(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+    });
+    document.getElementById('next').addEventListener('click', () => {
+      if (state.chapter < chapters.length - 1) { state.chapter++; save(); render(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+    });
+    document.querySelectorAll('[data-bm-go]').forEach(b => b.addEventListener('click', () => {
+      state.chapter = state.bookmarks[parseInt(b.dataset.bmGo,10)].chapter; save(); render();
+    }));
+    document.querySelectorAll('[data-bm-del]').forEach(b => b.addEventListener('click', () => {
+      state.bookmarks.splice(parseInt(b.dataset.bmDel,10), 1); save(); render();
+    }));
+    document.querySelectorAll('[data-note-go]').forEach(b => b.addEventListener('click', () => {
+      state.chapter = state.notes[parseInt(b.dataset.noteGo,10)].chapter; save(); render();
+    }));
+    document.querySelectorAll('[data-note-del]').forEach(b => b.addEventListener('click', () => {
+      state.notes.splice(parseInt(b.dataset.noteDel,10), 1); save(); render();
+    }));
+
+    // Selection toolbar
+    const body = document.getElementById('ch-body');
+    const tb = document.getElementById('sel-toolbar');
+    body.addEventListener('mouseup', () => {
+      const sel = window.getSelection();
+      const text = sel.toString().trim();
+      if (text.length < 3) { tb.classList.remove('show'); return; }
+      const range = sel.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+      tb.style.left = (rect.left + window.scrollX + rect.width/2 - 80) + 'px';
+      tb.style.top = (rect.top + window.scrollY - 42) + 'px';
+      tb.classList.add('show');
+      tb.dataset.text = text;
+    });
+    document.addEventListener('mousedown', e => {
+      if (!tb.contains(e.target) && !body.contains(e.target)) tb.classList.remove('show');
+    });
+    tb.querySelectorAll('button').forEach(btn => btn.addEventListener('click', () => {
+      const text = tb.dataset.text;
+      if (!text) return;
+      if (btn.dataset.sel === 'hl') {
+        state.highlights = state.highlights || [];
+        state.highlights.push({ chapter: state.chapter, text });
+        save(); tb.classList.remove('show'); render();
+      } else if (btn.dataset.sel === 'note') {
+        const noteText = prompt('Your note:', '');
+        if (noteText && noteText.trim()) {
+          state.notes.push({ chapter: state.chapter, snippet: text, text: noteText.trim(), when: new Date().toISOString() });
+          state.highlights = state.highlights || [];
+          state.highlights.push({ chapter: state.chapter, text });
+          save();
+        }
+        tb.classList.remove('show'); render();
+      }
+    }));
+  }
+
+  save();
+  render();
+</script>
+</body></html>

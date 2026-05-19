@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>Cafeteria — Supplies & Needs — UniFlow</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static-mockups/assets/css/styles.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  .level-bar { height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; min-width: 120px; }
+  .level-bar > div { height: 100%; transition: width .25s; }
+  .row-low td { background: rgba(217,119,6,0.06); }
+  .row-out td { background: rgba(220,38,38,0.08); }
+  .modal-wrap { position: fixed; inset: 0; background: rgba(11,18,32,.55); display: none; align-items: center; justify-content: center; z-index: 100; padding: 16px; }
+  .modal-wrap.open { display: flex; }
+  .modal { background: var(--surface); border-radius: 14px; padding: 22px; max-width: 600px; width: 100%; max-height: 92vh; overflow-y: auto; box-shadow: var(--shadow-md); }
+  .basket { max-height: 280px; overflow-y: auto; margin-top: 12px; }
+  .basket .line { display: grid; grid-template-columns: 1fr 80px 90px 28px; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px dashed var(--border); font-size: 13px; }
+  .basket .line input { width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font: inherit; text-align: right; }
+</style>
+</head><body>
+<script src="/static-mockups/assets/js/mock-data.js"></script>
+<script src="/static-mockups/assets/js/app.js"></script>
+<script>
+  UniFlow.renderShell({ title: 'Supplies & Needs' });
+
+  let items = MOCK.cafeteriaSupplies.map(i => Object.assign({}, i));
+  let pos    = MOCK.cafeteriaPurchaseOrders.map(p => Object.assign({}, p));
+  const supplierName = id => (MOCK.cafeteriaSuppliers.find(s => s.id === id) || {}).name || '—';
+  const supplierLead = id => (MOCK.cafeteriaSuppliers.find(s => s.id === id) || {}).leadDays || 1;
+  function money(n) { return '₼' + n.toFixed(2); }
+
+  function status(i) {
+    if (i.onHand <= 0) return { k: 'out', label: 'Out of stock', cls: 'danger' };
+    if (i.onHand <= i.reorder) return { k: 'low', label: 'Reorder', cls: 'warn' };
+    if (i.onHand >= i.parLevel * 0.85) return { k: 'ok',  label: 'Healthy', cls: 'success' };
+    return { k: 'mid', label: 'OK', cls: 'muted' };
+  }
+  function fillPct(i) { return Math.min(100, Math.max(0, Math.round(i.onHand / i.parLevel * 100))); }
+  function fillColor(i) { const s = status(i).k; return s === 'out' ? 'var(--danger)' : s === 'low' ? 'var(--warn)' : s === 'mid' ? 'var(--info)' : 'var(--success)'; }
+  function needQty(i) { return Math.max(0, Math.ceil(i.parLevel - i.onHand)); }
+  function daysOfStock(i) { return i.usePerDay > 0 ? (i.onHand / i.usePerDay).toFixed(1) : '∞'; }
+
+  // 30-day usage history (synthesized)
+  function usageSeries(i) {
+    const seed = parseInt(i.id.slice(2)) || 1;
+    const arr = [];
+    for (let d = 29; d >= 0; d--) {
+      const wd = ((Date.now() - d*86400000) / 86400000) | 0;
+      const noise = ((Math.sin(seed * (d+1)) + 1) / 2);
+      const isWeekend = (new Date(Date.now() - d*86400000).getDay() % 6 === 0);
+      arr.push(Math.max(0, +(i.usePerDay * (isWeekend ? 0.35 : 1) * (0.7 + 0.6 * noise)).toFixed(2)));
+    }
+    return arr;
+  }
+
+  // Initial counts
+  function counts() {
+    return {
+      out:  items.filter(i => status(i).k === 'out').length,
+      low:  items.filter(i => status(i).k === 'low').length,
+      open: pos.filter(p => p.status !== 'Delivered').length,
+      value: items.reduce((s,i) => s + i.onHand * i.costPerUnit, 0),
+      needCost: items.filter(i => status(i).k !== 'ok').reduce((s,i) => s + needQty(i) * i.costPerUnit, 0),
+    };
+  }
+
+  UniFlow.setContent(`
+    <div class="grid kpi">
+      <div class="card kpi-card"><div class="label">Out of stock</div><div class="value" style="color:var(--danger)" id="k-out">0</div><div class="delta">block menu items</div></div>
+      <div class="card kpi-card"><div class="label">Below reorder point</div><div class="value" style="color:var(--warn)" id="k-low">0</div><div class="delta">need replenishing</div></div>
+      <div class="card kpi-card"><div class="label">Open purchase orders</div><div class="value" id="k-open">0</div><div class="delta">in transit / placed</div></div>
+      <div class="card kpi-card"><div class="label">Stock on hand</div><div class="value" id="k-value">₼0</div><div class="delta">at cost</div></div>
+    </div>
+
+    <div class="card mt-16" style="background:linear-gradient(120deg, #FEF3C7 0%, #FEE2E2 100%);border-color:#FDE68A">
+      <div class="row between" style="flex-wrap:wrap;gap:12px">
+        <div>
+          <h2 style="margin:0">Today's needs</h2>
+          <p class="text-muted" style="margin-top:4px">Estimated <strong id="need-cost">₼0.00</strong> to bring all low / out items back to par.
+            Generates one purchase order per supplier.</p>
+        </div>
+        <div class="row">
+          <button class="btn ghost" onclick="alert('Daily-needs email sent to kitchen lead (stub)')">📧 Email summary</button>
+          <button class="btn primary" id="generate-pos">🛒 Auto-create POs from needs</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mt-16">
+      <div class="row between">
+        <h2>Inventory</h2>
+        <div class="row">
+          <div class="field" style="margin:0"><select id="f-status">
+            <option value="all">All statuses</option>
+            <option value="needs">Needs attention</option>
+            <option value="out">Out of stock</option>
+            <option value="low">Below reorder</option>
+            <option value="ok">Healthy</option>
+          </select></div>
+          <div class="field" style="margin:0"><select id="f-supplier">
+            <option value="all">All suppliers</option>
+            ${MOCK.cafeteriaSuppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+          </select></div>
+          <input id="q" class="field" type="search" placeholder="Search…" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px">
+          <button class="btn ghost" onclick="alert('CSV export (stub)')">Export</button>
+          <button class="btn primary" id="new-item">+ New item</button>
+        </div>
+      </div>
+
+      <div class="table-wrap mt-12">
+        <table class="data">
+          <thead><tr>
+            <th>Item</th><th>On hand</th><th>Level</th><th>Reorder pt</th><th>Par</th>
+            <th>Days left</th><th>Need</th><th>Supplier</th><th>Status</th><th></th>
+          </tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="grid two mt-16" style="grid-template-columns: 1.2fr 1fr">
+      <div class="card">
+        <h2>Open purchase orders</h2>
+        <div class="table-wrap mt-12">
+          <table class="data">
+            <thead><tr><th>PO</th><th>Supplier</th><th>Items</th><th>Total</th><th>ETA</th><th>Status</th><th></th></tr></thead>
+            <tbody id="po-body"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card">
+        <h2>30-day cafeteria spend on supplies</h2>
+        <div class="chart-wrap"><canvas id="ch-spend"></canvas></div>
+        <p class="text-muted text-sm mt-12">Spend follows the lunch-rush pattern: highest on Mon/Wed (fresh produce drops) and bakery restocks every Tuesday.</p>
+      </div>
+    </div>
+
+    <!-- Reorder modal -->
+    <div id="modal" class="modal-wrap">
+      <div class="modal">
+        <div class="row between"><h2 id="m-title">Create purchase order</h2><button class="btn ghost btn-sm" id="m-close">✕</button></div>
+        <div class="field mt-12"><label>Supplier</label><select id="m-supplier">${MOCK.cafeteriaSuppliers.map(s => `<option value="${s.id}">${s.name} · lead ${s.leadDays}d</option>`).join('')}</select></div>
+        <div class="field"><label>Notes for supplier</label><textarea id="m-notes" rows="2" placeholder="e.g. deliver to back kitchen, ring bell"></textarea></div>
+        <div>
+          <div class="row between"><strong>Items</strong><button class="btn ghost btn-sm" id="m-add-line">+ Add line</button></div>
+          <div id="m-basket" class="basket"></div>
+          <div class="row between mt-12" style="padding-top:8px;border-top:1px solid var(--border)">
+            <div class="text-muted">Estimated total</div><div id="m-total" style="font-weight:700;font-size:18px">₼0.00</div>
+          </div>
+        </div>
+        <div class="row end mt-16">
+          <button class="btn ghost" id="m-cancel">Cancel</button>
+          <button class="btn primary" id="m-place">Place order</button>
+        </div>
+      </div>
+    </div>
+  `);
+
+  // ---- Render ----
+  function renderTable() {
+    const q = document.getElementById('q').value.trim().toLowerCase();
+    const fs = document.getElementById('f-status').value;
+    const fsup = document.getElementById('f-supplier').value;
+    const list = items.filter(i => {
+      const s = status(i).k;
+      if (fs === 'needs' && s === 'ok') return false;
+      if (fs === 'out' && s !== 'out') return false;
+      if (fs === 'low' && s !== 'low') return false;
+      if (fs === 'ok' && s !== 'ok')  return false;
+      if (fsup !== 'all' && i.supplier !== fsup) return false;
+      if (q && !(i.name + ' ' + i.id + ' ' + supplierName(i.supplier)).toLowerCase().includes(q)) return false;
+      return true;
+    });
+    document.getElementById('tbody').innerHTML = list.length === 0
+      ? '<tr><td colspan="10" class="text-muted" style="text-align:center;padding:24px">Nothing here.</td></tr>'
+      : list.map(i => {
+        const s = status(i);
+        return `<tr class="${s.k === 'out' ? 'row-out' : s.k === 'low' ? 'row-low' : ''}">
+          <td><strong>${i.name}</strong><br><span class="text-muted text-sm"><code>${i.id}</code> · ${money(i.costPerUnit)}/${i.unit}</span></td>
+          <td><strong>${i.onHand}</strong> <span class="text-muted text-sm">${i.unit}</span></td>
+          <td><div class="level-bar"><div style="width:${fillPct(i)}%;background:${fillColor(i)}"></div></div><div class="text-muted text-sm">${fillPct(i)}% of par</div></td>
+          <td>${i.reorder} ${i.unit}</td>
+          <td>${i.parLevel} ${i.unit}</td>
+          <td>${daysOfStock(i)} d <span class="text-muted text-sm">@ ${i.usePerDay}/d</span></td>
+          <td>${needQty(i) > 0 ? `<strong>+${needQty(i)} ${i.unit}</strong><br><span class="text-muted text-sm">${money(needQty(i)*i.costPerUnit)}</span>` : '<span class="text-muted">—</span>'}</td>
+          <td><span class="text-sm">${supplierName(i.supplier)}</span></td>
+          <td><span class="badge ${s.cls}">${s.label}</span></td>
+          <td>
+            <div class="row">
+              <button class="btn ghost btn-sm" data-recv="${i.id}" title="Receive stock">+ Stock</button>
+              <button class="btn primary btn-sm" data-order="${i.id}">Order</button>
+            </div>
+          </td>
+        </tr>`;
+      }).join('');
+
+    // KPIs + needs total
+    const c = counts();
+    document.getElementById('k-out').textContent  = c.out;
+    document.getElementById('k-low').textContent  = c.low;
+    document.getElementById('k-open').textContent = c.open;
+    document.getElementById('k-value').textContent = money(c.value);
+    document.getElementById('need-cost').textContent = money(c.needCost);
+
+    document.querySelectorAll('[data-order]').forEach(b => b.addEventListener('click', () => openOrderModal([b.dataset.order])));
+    document.querySelectorAll('[data-recv]').forEach(b => b.addEventListener('click', () => {
+      const i = items.find(x => x.id === b.dataset.recv);
+      const q = parseFloat(prompt('Receive how many ' + i.unit + ' of ' + i.name + '?', needQty(i) || 1));
+      if (q && q > 0) { i.onHand += q; renderTable(); }
+    }));
+  }
+
+  function renderPOs() {
+    document.getElementById('po-body').innerHTML = pos.length === 0
+      ? '<tr><td colspan="7" class="text-muted" style="text-align:center;padding:24px">No purchase orders yet.</td></tr>'
+      : pos.map(p => `<tr>
+          <td><code>${p.id}</code><br><span class="text-muted text-sm">${UniFlow.fmt.date(p.placed)}</span></td>
+          <td>${supplierName(p.supplier)}</td>
+          <td>${p.items.map(it => { const m = items.find(x => x.id === it.id); return m ? `${m.name} ×${it.q}` : it.id; }).join('<br>')}</td>
+          <td><strong>${money(p.total)}</strong></td>
+          <td>${UniFlow.fmt.date(p.eta)}</td>
+          <td><span class="badge ${p.status === 'Delivered' ? 'success' : p.status === 'In transit' ? 'info' : 'warn'}">${p.status}</span></td>
+          <td>${p.status === 'Delivered'
+              ? `<button class="btn ghost btn-sm" onclick="alert('PDF receipt (stub)')">Receipt</button>`
+              : `<button class="btn primary btn-sm" data-receive-po="${p.id}">Mark received</button>`}</td>
+        </tr>`).join('');
+    document.querySelectorAll('[data-receive-po]').forEach(b => b.addEventListener('click', () => {
+      const p = pos.find(x => x.id === b.dataset.receivePo); if (!p) return;
+      p.items.forEach(it => { const i = items.find(x => x.id === it.id); if (i) i.onHand += it.q; });
+      p.status = 'Delivered'; renderPOs(); renderTable();
+    }));
+  }
+
+  // ---- Order modal ----
+  const modal = document.getElementById('modal');
+  let basket = []; // [{id, q}]
+
+  function openOrderModal(ids) {
+    basket = ids.map(id => { const i = items.find(x => x.id === id); return { id, q: needQty(i) || 1 }; });
+    const supplierFromFirst = items.find(x => x.id === ids[0]).supplier;
+    document.getElementById('m-supplier').value = supplierFromFirst;
+    document.getElementById('m-notes').value = '';
+    renderBasket();
+    modal.classList.add('open');
+  }
+  function renderBasket() {
+    document.getElementById('m-basket').innerHTML = basket.map((b, idx) => {
+      const i = items.find(x => x.id === b.id);
+      return `<div class="line">
+        <div><strong>${i.name}</strong><div class="text-muted text-sm">${money(i.costPerUnit)}/${i.unit} · ${i.unit}</div></div>
+        <input type="number" min="1" value="${b.q}" data-q="${idx}">
+        <div style="text-align:right"><strong>${money(b.q * i.costPerUnit)}</strong></div>
+        <button class="btn ghost btn-sm" data-rm="${idx}">✕</button>
+      </div>`;
+    }).join('') || '<div class="empty text-sm" style="padding:14px">Basket is empty. Add a line.</div>';
+    document.getElementById('m-total').textContent = money(basket.reduce((s,b) => { const i = items.find(x => x.id === b.id); return s + b.q * i.costPerUnit; }, 0));
+    document.querySelectorAll('[data-q]').forEach(inp => inp.addEventListener('input', () => { basket[+inp.dataset.q].q = parseFloat(inp.value) || 0; renderBasket(); }));
+    document.querySelectorAll('[data-rm]').forEach(b => b.addEventListener('click', () => { basket.splice(+b.dataset.rm, 1); renderBasket(); }));
+  }
+  document.getElementById('m-close').addEventListener('click', () => modal.classList.remove('open'));
+  document.getElementById('m-cancel').addEventListener('click', () => modal.classList.remove('open'));
+  document.getElementById('m-add-line').addEventListener('click', () => {
+    const id = prompt('Item ID to add (e.g. I-12)?'); if (!id) return;
+    if (!items.find(x => x.id === id)) { alert('Unknown item.'); return; }
+    basket.push({ id, q: 1 }); renderBasket();
+  });
+  document.getElementById('m-place').addEventListener('click', () => {
+    if (basket.length === 0) { alert('Basket is empty.'); return; }
+    const sup = document.getElementById('m-supplier').value;
+    const total = basket.reduce((s,b) => { const i = items.find(x => x.id === b.id); return s + b.q * i.costPerUnit; }, 0);
+    const id = 'PO-' + (2050 + Math.floor(Math.random() * 900));
+    const eta = new Date(); eta.setDate(eta.getDate() + supplierLead(sup));
+    pos.unshift({ id, placed: new Date().toISOString(), supplier: sup, items: basket.map(b => ({ id: b.id, q: b.q })), total, status: 'Placed', eta: eta.toISOString() });
+    modal.classList.remove('open');
+    renderPOs(); renderTable();
+    alert('Purchase order ' + id + ' placed with ' + supplierName(sup) + '.');
+  });
+  document.getElementById('new-item').addEventListener('click', () => alert('Add new tracked item — opens an editor (stub).'));
+
+  // Bulk generate POs from needs
+  document.getElementById('generate-pos').addEventListener('click', () => {
+    const needs = items.filter(i => status(i).k !== 'ok');
+    if (needs.length === 0) { alert('No items need replenishment.'); return; }
+    const bySup = {};
+    needs.forEach(i => { (bySup[i.supplier] = bySup[i.supplier] || []).push(i); });
+    Object.entries(bySup).forEach(([sup, list]) => {
+      const total = list.reduce((s,i) => s + needQty(i) * i.costPerUnit, 0);
+      const eta = new Date(); eta.setDate(eta.getDate() + supplierLead(sup));
+      pos.unshift({ id: 'PO-' + (2050 + Math.floor(Math.random() * 900)), placed: new Date().toISOString(), supplier: sup, items: list.map(i => ({ id: i.id, q: needQty(i) })), total, status: 'Placed', eta: eta.toISOString() });
+    });
+    renderPOs(); renderTable();
+    alert('Created ' + Object.keys(bySup).length + ' purchase order(s).');
+  });
+
+  // Filters
+  ['q','f-status','f-supplier'].forEach(id => document.getElementById(id).addEventListener('input', renderTable));
+
+  // 30-day spend chart (sum across all supplies, scaled per supplier delivery days)
+  const days = []; for (let d = 29; d >= 0; d--) { const x = new Date(); x.setDate(x.getDate() - d); days.push(x.toLocaleDateString('en-GB',{day:'2-digit',month:'short'})); }
+  const spend = days.map((_, idx) => {
+    const dow = (idx + 6) % 7;
+    const base = (dow === 0 || dow === 6) ? 40 : 95;
+    return Math.round(base + 60 * Math.abs(Math.sin(idx * 1.7)) + (idx % 7 === 1 ? 80 : 0));
+  });
+  new Chart(document.getElementById('ch-spend'), {
+    type: 'bar',
+    data: { labels: days, datasets: [{ label: 'Supplies spend (₼)', data: spend, backgroundColor: '#1A5AD7', borderRadius: 3 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+  });
+
+  renderTable(); renderPOs();
+</script>
+</body></html>

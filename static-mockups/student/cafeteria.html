@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>Cafeteria — UniFlow</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static-mockups/assets/css/styles.css">
+<style>
+  .menu-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+  .menu-card { display: flex; flex-direction: column; gap: 6px; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); transition: transform .15s, box-shadow .15s; }
+  .menu-card:hover { transform: translateY(-1px); box-shadow: var(--shadow-md); }
+  .menu-card .emoji { font-size: 30px; line-height: 1; }
+  .menu-card .name { font-weight: 600; font-size: 14px; }
+  .menu-card .sub { color: var(--muted); font-size: 12px; }
+  .menu-card .row { margin-top: auto; align-items: center; }
+  .menu-card .price { font-weight: 700; font-size: 15px; }
+  .cat-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+  .cat-pills button { background: var(--surface); border: 1px solid var(--border); padding: 6px 12px; border-radius: 999px; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; }
+  .cat-pills button.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+  .cart { position: sticky; top: 76px; }
+  .cart .lines { max-height: 320px; overflow-y: auto; }
+  .cart .line { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px dashed var(--border); font-size: 13px; }
+  .cart .line:last-child { border-bottom: none; }
+  .cart .line .name { flex: 1; }
+  .qty { display: inline-flex; align-items: center; gap: 4px; }
+  .qty button { width: 22px; height: 22px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); cursor: pointer; line-height: 1; }
+  .modal-wrap { position: fixed; inset: 0; background: rgba(11,18,32,.55); display: none; align-items: center; justify-content: center; z-index: 100; padding: 16px; }
+  .modal-wrap.open { display: flex; }
+  .modal { background: var(--surface); border-radius: 16px; padding: 24px; max-width: 460px; width: 100%; box-shadow: var(--shadow-md); max-height: 90vh; overflow-y: auto; }
+  .pay-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+  .pay-choice button { padding: 14px; border: 2px solid var(--border); background: var(--surface); border-radius: 12px; text-align: left; cursor: pointer; font: inherit; }
+  .pay-choice button.active { border-color: var(--primary); background: var(--primary-soft); }
+  .pay-choice .lbl { font-weight: 600; font-size: 14px; display: block; }
+  .pay-choice .sub { font-size: 12px; color: var(--muted); margin-top: 2px; display: block; }
+  .qr-box { padding: 18px; border: 2px dashed var(--border); border-radius: 12px; text-align: center; background: var(--bg); }
+  .qr-box img { width: 200px; height: 200px; margin: 0 auto; }
+  .countdown { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; color: var(--muted); }
+  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--success); color: #fff; padding: 10px 18px; border-radius: 8px; font-weight: 500; box-shadow: var(--shadow-md); z-index: 200; display: none; }
+  .toast.show { display: block; animation: slidein .25s ease-out; }
+  @keyframes slidein { from { transform: translate(-50%, 20px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
+</style>
+</head><body>
+<script src="/static-mockups/assets/js/mock-data.js"></script>
+<script src="/static-mockups/assets/js/app.js"></script>
+<script>
+  UniFlow.renderShell({ title: 'Cafeteria' });
+
+  // ---- State ----
+  const STUDENT = MOCK.students[0]; // S-1001
+  const BALANCE_KEY = 'uniflow.cafe.balance';
+  let balance = parseFloat(localStorage.getItem(BALANCE_KEY) || '42.50');
+  let cart = [];          // [{ id, q }]
+  let activeCat = 'All';
+  let orderHistory = [...MOCK.cafeteriaOrders];
+
+  const cats = ['All', ...new Set(MOCK.cafeteriaMenu.map(m => m.cat))];
+
+  function lookup(id) { return MOCK.cafeteriaMenu.find(m => m.id === id); }
+  function cartTotal() { return cart.reduce((s, c) => s + lookup(c.id).price * c.q, 0); }
+  function cartCount() { return cart.reduce((s, c) => s + c.q, 0); }
+  function money(n) { return '₼' + n.toFixed(2); }
+  function saveBalance() { localStorage.setItem(BALANCE_KEY, balance.toFixed(2)); }
+
+  UniFlow.setContent(`
+    <div class="grid kpi">
+      <div class="card kpi-card">
+        <div class="label">LMS balance</div>
+        <div class="value" id="kpi-balance" style="color:var(--primary)">${money(balance)}</div>
+        <div class="delta">Top-up from Payments page</div>
+      </div>
+      <div class="card kpi-card">
+        <div class="label">Spent this month</div>
+        <div class="value">₼68.40</div>
+        <div class="delta">across 18 orders</div>
+      </div>
+      <div class="card kpi-card">
+        <div class="label">Daily allowance</div>
+        <div class="value">₼12.00</div>
+        <div class="delta">Scholarship credit · expires today</div>
+      </div>
+      <div class="card kpi-card">
+        <div class="label">Favourite</div>
+        <div class="value" style="font-size:18px">Plov with lamb</div>
+        <div class="delta">ordered 7× this term</div>
+      </div>
+    </div>
+
+    <div class="grid two mt-16" style="grid-template-columns: 2fr 1fr">
+      <div>
+        <div class="card">
+          <div class="row between">
+            <h2>Menu — Main Canteen (Block A)</h2>
+            <span class="badge success">Open · until 18:00</span>
+          </div>
+          <div class="row mt-12" style="gap:12px;flex-wrap:wrap">
+            <div class="cat-pills" id="cat-pills">
+              ${cats.map((c, i) => `<button class="${i===0?'active':''}" data-cat="${c}">${c}</button>`).join('')}
+            </div>
+            <div class="flex-1"></div>
+            <div class="field" style="margin:0"><input id="search" type="search" placeholder="Search menu…" style="padding:7px 12px;border:1px solid var(--border);border-radius:8px"></div>
+          </div>
+          <div id="menu" class="menu-grid mt-16"></div>
+        </div>
+
+        <div class="card mt-16">
+          <div class="row between"><h2>Recent orders</h2><a class="btn ghost btn-sm" href="/static-mockups/student/payments.html">View statement</a></div>
+          <div class="table-wrap mt-12">
+            <table class="data">
+              <thead><tr><th>Order</th><th>When</th><th>Items</th><th>Method</th><th>Total</th><th></th></tr></thead>
+              <tbody id="orders"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="card cart">
+          <div class="row between">
+            <h2>Your tray</h2>
+            <span class="badge info" id="cart-count">0 items</span>
+          </div>
+          <div class="lines mt-12" id="cart-lines">
+            <div class="empty"><div class="emoji">🍽️</div>Tap a menu item to add it to your tray.</div>
+          </div>
+          <div class="row between mt-16" style="padding-top:12px;border-top:1px solid var(--border)">
+            <div class="text-muted">Subtotal</div>
+            <div style="font-weight:700;font-size:18px" id="cart-total">₼0.00</div>
+          </div>
+          <button id="checkout" class="btn primary mt-12" style="width:100%" disabled>Checkout →</button>
+          <p class="text-muted text-sm mt-12">Pay instantly from your LMS balance, or generate a one-time QR for the cashier to scan.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Checkout modal -->
+    <div id="modal" class="modal-wrap">
+      <div class="modal">
+        <div class="row between"><h2>Checkout</h2><button class="btn ghost btn-sm" id="modal-close">✕</button></div>
+
+        <div id="step-pick">
+          <div class="text-muted text-sm">${STUDENT.name} · <code>${STUDENT.id}</code></div>
+          <div class="card mt-12" style="background:var(--bg);padding:12px">
+            <div id="modal-lines" style="font-size:13px"></div>
+            <div class="row between mt-12" style="padding-top:8px;border-top:1px solid var(--border)">
+              <div>Total</div><div id="modal-total" style="font-weight:700"></div>
+            </div>
+          </div>
+          <h3 class="mt-16">Pay with</h3>
+          <div class="pay-choice">
+            <button id="pay-balance" class="active">
+              <span class="lbl">💳 LMS Balance</span>
+              <span class="sub">Available: <strong id="pay-balance-amt">${money(balance)}</strong></span>
+            </button>
+            <button id="pay-qr">
+              <span class="lbl">📱 Pay by QR</span>
+              <span class="sub">Cashier scans to charge</span>
+            </button>
+          </div>
+          <div class="row end mt-16">
+            <button id="confirm" class="btn primary">Confirm</button>
+          </div>
+        </div>
+
+        <div id="step-qr" style="display:none">
+          <p class="text-muted text-sm">Show this QR to the cashier. It encodes your student ID and the pending order ID. It expires in <span class="countdown" id="qr-cd">02:00</span>.</p>
+          <div class="qr-box mt-12"><img id="qr-img" alt="Payment QR"></div>
+          <div class="info-row mt-12"><div class="k">Order ID</div><div><code id="qr-order"></code></div></div>
+          <div class="info-row"><div class="k">Amount</div><div id="qr-amount" style="font-weight:600"></div></div>
+          <div class="info-row"><div class="k">Status</div><div><span class="badge warn" id="qr-status">Awaiting scan…</span></div></div>
+          <div class="row end mt-16">
+            <button class="btn ghost" id="qr-cancel">Cancel</button>
+            <button class="btn primary" id="qr-simulate">Simulate cashier scan</button>
+          </div>
+        </div>
+
+        <div id="step-done" style="display:none;text-align:center;padding:20px 0">
+          <div style="font-size:48px">✅</div>
+          <h2 class="mt-12">Order confirmed</h2>
+          <div class="text-muted text-sm mt-12">Order <code id="done-id"></code> · <span id="done-method"></span></div>
+          <div style="font-size:24px;font-weight:700;margin:12px 0" id="done-total"></div>
+          <div class="text-muted text-sm">New balance: <strong id="done-balance"></strong></div>
+          <button class="btn primary mt-16" id="done-close">Done</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+  `);
+
+  // ---- Render helpers ----
+  function renderMenu() {
+    const q = document.getElementById('search').value.trim().toLowerCase();
+    const items = MOCK.cafeteriaMenu.filter(m =>
+      (activeCat === 'All' || m.cat === activeCat) &&
+      (!q || m.name.toLowerCase().includes(q))
+    );
+    const el = document.getElementById('menu');
+    if (items.length === 0) {
+      el.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="emoji">🤷</div>No items match.</div>';
+      return;
+    }
+    el.innerHTML = items.map(m => `<div class="menu-card">
+      <div class="emoji">${m.emoji}</div>
+      <div class="name">${m.name} ${m.tag ? `<span class="badge ${m.tag==='Veg'?'success':'info'}" style="font-size:10px">${m.tag}</span>` : ''}</div>
+      <div class="sub">${m.cat} · ${m.kcal} kcal</div>
+      <div class="row between">
+        <div class="price">${money(m.price)}</div>
+        <button class="btn primary btn-sm" data-add="${m.id}">+ Add</button>
+      </div>
+    </div>`).join('');
+    el.querySelectorAll('[data-add]').forEach(b => b.addEventListener('click', () => addToCart(b.dataset.add)));
+  }
+
+  function renderCart() {
+    document.getElementById('cart-count').textContent = cartCount() + ' item' + (cartCount() === 1 ? '' : 's');
+    const el = document.getElementById('cart-lines');
+    if (cart.length === 0) {
+      el.innerHTML = '<div class="empty"><div class="emoji">🍽️</div>Tap a menu item to add it to your tray.</div>';
+    } else {
+      el.innerHTML = cart.map(c => {
+        const m = lookup(c.id);
+        return `<div class="line">
+          <span style="font-size:20px">${m.emoji}</span>
+          <div class="name"><div>${m.name}</div><div class="text-muted text-sm">${money(m.price)} each</div></div>
+          <span class="qty">
+            <button data-dec="${c.id}">−</button><span style="min-width:18px;text-align:center">${c.q}</span><button data-inc="${c.id}">+</button>
+          </span>
+          <strong style="min-width:54px;text-align:right">${money(m.price * c.q)}</strong>
+        </div>`;
+      }).join('');
+      el.querySelectorAll('[data-inc]').forEach(b => b.addEventListener('click', () => bump(b.dataset.inc, +1)));
+      el.querySelectorAll('[data-dec]').forEach(b => b.addEventListener('click', () => bump(b.dataset.dec, -1)));
+    }
+    document.getElementById('cart-total').textContent = money(cartTotal());
+    document.getElementById('checkout').disabled = cart.length === 0;
+  }
+
+  function renderOrders() {
+    document.getElementById('orders').innerHTML = orderHistory.map(o => `<tr>
+      <td><code>${o.id}</code></td>
+      <td>${UniFlow.fmt.date(o.when)}</td>
+      <td>${o.items.map(i => lookup(i.id) ? lookup(i.id).emoji + ' ×' + i.q : '').join(' ')}</td>
+      <td><span class="text-sm">${o.method}</span></td>
+      <td><strong>${money(o.total)}</strong></td>
+      <td><button class="btn ghost btn-sm" onclick="alert('Receipt ${o.id} (stub PDF)')">Receipt</button></td>
+    </tr>`).join('');
+  }
+
+  function refreshBalance() {
+    document.getElementById('kpi-balance').textContent = money(balance);
+    const amt = document.getElementById('pay-balance-amt'); if (amt) amt.textContent = money(balance);
+  }
+
+  function addToCart(id) {
+    const existing = cart.find(c => c.id === id);
+    if (existing) existing.q++; else cart.push({ id, q: 1 });
+    renderCart();
+    toast('Added to tray');
+  }
+  function bump(id, d) {
+    const c = cart.find(x => x.id === id); if (!c) return;
+    c.q += d; if (c.q <= 0) cart = cart.filter(x => x.id !== id);
+    renderCart();
+  }
+
+  function toast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.classList.add('show');
+    clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), 1800);
+  }
+
+  // ---- Wire up ----
+  document.querySelectorAll('#cat-pills [data-cat]').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('#cat-pills button').forEach(x => x.classList.remove('active'));
+    b.classList.add('active'); activeCat = b.dataset.cat; renderMenu();
+  }));
+  document.getElementById('search').addEventListener('input', renderMenu);
+
+  // ---- Checkout flow ----
+  const modal = document.getElementById('modal');
+  function openModal() {
+    document.getElementById('step-pick').style.display = 'block';
+    document.getElementById('step-qr').style.display = 'none';
+    document.getElementById('step-done').style.display = 'none';
+    payMode = 'balance';
+    document.getElementById('pay-balance').classList.add('active');
+    document.getElementById('pay-qr').classList.remove('active');
+    document.getElementById('modal-lines').innerHTML = cart.map(c => {
+      const m = lookup(c.id);
+      return `<div class="row between" style="padding:4px 0"><div>${m.emoji} ${m.name} × ${c.q}</div><div>${money(m.price * c.q)}</div></div>`;
+    }).join('');
+    document.getElementById('modal-total').textContent = money(cartTotal());
+    refreshBalance();
+    modal.classList.add('open');
+  }
+  function closeModal() { modal.classList.remove('open'); clearInterval(qrTimer); }
+  document.getElementById('checkout').addEventListener('click', openModal);
+  document.getElementById('modal-close').addEventListener('click', closeModal);
+  document.getElementById('done-close').addEventListener('click', closeModal);
+
+  let payMode = 'balance';
+  document.getElementById('pay-balance').addEventListener('click', () => { payMode='balance'; document.getElementById('pay-balance').classList.add('active'); document.getElementById('pay-qr').classList.remove('active'); });
+  document.getElementById('pay-qr').addEventListener('click', () => { payMode='qr'; document.getElementById('pay-qr').classList.add('active'); document.getElementById('pay-balance').classList.remove('active'); });
+
+  document.getElementById('confirm').addEventListener('click', () => {
+    const total = cartTotal();
+    if (payMode === 'balance') {
+      if (balance < total) { alert('Insufficient balance. Top up on the Payments page or pay by QR instead.'); return; }
+      finalizeOrder(total, 'Balance');
+    } else {
+      startQrFlow(total);
+    }
+  });
+
+  let qrTimer = null;
+  function startQrFlow(total) {
+    document.getElementById('step-pick').style.display = 'none';
+    document.getElementById('step-qr').style.display = 'block';
+    const orderId = 'CO-' + (2050 + Math.floor(Math.random() * 500));
+    const payload = 'UNIFLOW|PAY|' + STUDENT.id + '|' + orderId + '|' + total.toFixed(2);
+    document.getElementById('qr-order').textContent = orderId;
+    document.getElementById('qr-amount').textContent = money(total);
+    document.getElementById('qr-status').textContent = 'Awaiting scan…';
+    document.getElementById('qr-status').className = 'badge warn';
+    document.getElementById('qr-img').src = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&margin=0&data=' + encodeURIComponent(payload);
+    let sec = 120;
+    document.getElementById('qr-cd').textContent = fmtCd(sec);
+    clearInterval(qrTimer);
+    qrTimer = setInterval(() => { sec--; document.getElementById('qr-cd').textContent = fmtCd(sec); if (sec <= 0) { clearInterval(qrTimer); document.getElementById('qr-status').textContent = 'Expired'; document.getElementById('qr-status').className = 'badge danger'; } }, 1000);
+    document.getElementById('qr-cancel').onclick = () => { clearInterval(qrTimer); document.getElementById('step-pick').style.display = 'block'; document.getElementById('step-qr').style.display = 'none'; };
+    document.getElementById('qr-simulate').onclick = () => { clearInterval(qrTimer); finalizeOrder(total, 'QR · Main canteen cashier', orderId); };
+  }
+  function fmtCd(s) { const m = Math.floor(s/60), r = s%60; return (m+':'+(r<10?'0':'')+r); }
+
+  function finalizeOrder(total, method, providedId) {
+    if (method === 'Balance') { balance -= total; saveBalance(); refreshBalance(); }
+    const id = providedId || 'CO-' + (2050 + Math.floor(Math.random() * 500));
+    orderHistory.unshift({ id, when: new Date().toISOString(), items: cart.map(c => ({ id: c.id, q: c.q })), total, method });
+    renderOrders();
+    document.getElementById('done-id').textContent = id;
+    document.getElementById('done-method').textContent = method;
+    document.getElementById('done-total').textContent = money(total);
+    document.getElementById('done-balance').textContent = money(balance);
+    document.getElementById('step-pick').style.display = 'none';
+    document.getElementById('step-qr').style.display = 'none';
+    document.getElementById('step-done').style.display = 'block';
+    cart = []; renderCart();
+  }
+
+  // Initial render
+  renderMenu(); renderCart(); renderOrders();
+</script>
+</body></html>

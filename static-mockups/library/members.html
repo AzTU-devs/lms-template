@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>Members — UniFlow</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static-mockups/assets/css/styles.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  .tier { font-weight:600; font-size:11px; padding:3px 8px; border-radius:999px; }
+  .tier.Bronze   { background:#FEF3C7; color:#92400E; }
+  .tier.Silver   { background:#E5E7EB; color:#374151; }
+  .tier.Gold     { background:#FDE68A; color:#78350F; }
+  .tier.Platinum { background:#DBEAFE; color:#1E40AF; }
+  .member-row.selected { background: var(--primary-soft); }
+  .member-row { cursor: pointer; }
+</style>
+</head><body>
+<script src="/static-mockups/assets/js/mock-data.js"></script>
+<script src="/static-mockups/assets/js/app.js"></script>
+<script>
+  // Force Library role view for this page (so sidebar shows librarian nav)
+  if (!localStorage.getItem('uniflow.role')) {
+    // don't override anything if user already picked something
+  }
+  UniFlow.renderShell({ title: 'Members' });
+
+  // Build unified member list
+  const studentMembers = MOCK.students.map(s => ({
+    id: s.id, name: s.name, kind: 'Student', dept: s.dept,
+    email: (s.name.toLowerCase().replace(/\s+/g,'.').replace(/[^a-z.]/g,'')) + '@uniflow.edu',
+    joined: '2023-09-12',
+  }));
+  const teacherMembers = MOCK.employees.map(e => ({
+    id: e.id, name: e.name, kind: 'Teacher', dept: e.dept,
+    email: e.email, joined: '2021-02-01',
+  }));
+  const allMembers = [...studentMembers, ...teacherMembers];
+
+  // Compute per-member stats
+  function statsFor(id) {
+    const loans = MOCK.libraryLoans.filter(l => l.userId === id);
+    const active = loans.filter(l => l.status !== 'Returned');
+    const overdue = loans.filter(l => l.status === 'Overdue').length;
+    const holds = MOCK.libraryHolds.filter(h => h.userId === id);
+    const fines = MOCK.libraryFines.filter(f => f.userId === id);
+    const unpaid = fines.filter(f => !f.paid).reduce((s,f)=>s+f.amount,0);
+    return { loans, active, overdue, holds, fines, unpaid, total: loans.length };
+  }
+  function tierFor(total) {
+    if (total >= 12) return 'Platinum';
+    if (total >= 6)  return 'Gold';
+    if (total >= 3)  return 'Silver';
+    return 'Bronze';
+  }
+  const findBook = id => MOCK.libraryBooks.find(b => b.id === id) || { title: id, cover:'📘', authors:'' };
+
+  // Filter state
+  const state = { q: '', kind: 'All', status: 'All', selectedId: null, detailTab: 'active', blocked: {} };
+
+  function filtered() {
+    return allMembers.filter(m => {
+      if (state.kind !== 'All' && m.kind !== state.kind) return false;
+      const s = statsFor(m.id);
+      if (state.status === 'Has overdue' && s.overdue === 0) return false;
+      if (state.status === 'Has fines' && s.unpaid === 0) return false;
+      if (state.status === 'Active' && s.active.length === 0) return false;
+      const q = state.q.trim().toLowerCase();
+      if (q && !(m.name.toLowerCase().includes(q) || m.id.toLowerCase().includes(q))) return false;
+      return true;
+    });
+  }
+
+  function kpis() {
+    const total = allMembers.length;
+    const active = allMembers.filter(m => statsFor(m.id).active.length > 0).length;
+    const overdue = allMembers.filter(m => statsFor(m.id).overdue > 0).length;
+    const fines = allMembers.filter(m => statsFor(m.id).unpaid > 0).length;
+    return { total, active, overdue, fines };
+  }
+
+  function tableRows() {
+    const rows = filtered();
+    if (!rows.length) return `<tr><td colspan="9"><div class="empty">No members match.</div></td></tr>`;
+    return rows.map(m => {
+      const s = statsFor(m.id);
+      const tier = tierFor(s.total);
+      const selected = state.selectedId === m.id ? 'selected' : '';
+      return `<tr class="member-row ${selected}" data-id="${m.id}">
+        <td><strong>${m.name}</strong><div class="text-muted text-sm">${m.email}</div></td>
+        <td><code>${m.id}</code></td>
+        <td><span class="badge ${m.kind==='Student'?'info':'muted'}">${m.kind}</span></td>
+        <td>${m.dept}</td>
+        <td>${s.total}</td>
+        <td>${s.active.length}</td>
+        <td>${s.overdue ? `<span class="badge danger">${s.overdue}</span>` : '0'}</td>
+        <td>${s.unpaid > 0 ? `<span class="badge warn">₼${s.unpaid.toFixed(2)}</span>` : '<span class="text-muted">—</span>'}</td>
+        <td><span class="tier ${tier}">${tier}</span></td>
+        <td><button class="btn btn-sm" data-view="${m.id}">View</button></td>
+      </tr>`;
+    }).join('');
+  }
+
+  function detailPanel() {
+    if (!state.selectedId) return '';
+    const m = allMembers.find(x => x.id === state.selectedId);
+    if (!m) return '';
+    const s = statsFor(m.id);
+    const initials = m.name.split(' ').map(p => p[0]).join('').slice(0,2);
+    const blocked = !!state.blocked[m.id];
+
+    const activeTbl = s.active.length ? `<div class="table-wrap"><table class="data">
+      <thead><tr><th>Book</th><th>Issued</th><th>Due</th><th>Status</th><th>Renewals</th><th></th></tr></thead>
+      <tbody>${s.active.map(l => {
+        const b = findBook(l.book);
+        const d = UniFlow.fmt.daysUntil(l.due);
+        const badge = d < 0 ? `<span class="badge danger">${-d}d overdue</span>` : (d <= 3 ? `<span class="badge warn">due in ${d}d</span>` : `<span class="badge success">due in ${d}d</span>`);
+        return `<tr>
+          <td><span style="font-size:20px;margin-right:6px">${b.cover}</span> ${b.title}</td>
+          <td>${UniFlow.fmt.date(l.issued)}</td>
+          <td>${UniFlow.fmt.date(l.due)}</td>
+          <td>${badge}</td>
+          <td>${l.renewals}/2</td>
+          <td><button class="btn btn-sm" onclick="alert('Loan renewed (stub)')">Renew</button>
+              <button class="btn btn-sm primary" onclick="alert('Marked as returned (stub)')">Mark returned</button></td>
+        </tr>`;
+      }).join('')}</tbody></table></div>` : '<div class="empty">No active loans.</div>';
+
+    const holdsTbl = s.holds.length ? `<div class="table-wrap"><table class="data">
+      <thead><tr><th>Book</th><th>Placed</th><th>Position</th><th>Status</th></tr></thead>
+      <tbody>${s.holds.map(h => {
+        const b = findBook(h.book);
+        const cls = h.status === 'Ready for pickup' ? 'success' : 'warn';
+        return `<tr>
+          <td><span style="font-size:20px;margin-right:6px">${b.cover}</span> ${b.title}</td>
+          <td>${UniFlow.fmt.date(h.placed)}</td>
+          <td>#${h.position}</td>
+          <td><span class="badge ${cls}">${h.status}</span></td>
+        </tr>`;
+      }).join('')}</tbody></table></div>` : '<div class="empty">No active holds.</div>';
+
+    const finesTbl = s.fines.length ? `<div class="table-wrap"><table class="data">
+      <thead><tr><th>When</th><th>Reason</th><th>Amount</th><th>Status</th><th></th></tr></thead>
+      <tbody>${s.fines.map(f => `<tr>
+        <td>${UniFlow.fmt.date(f.when)}</td>
+        <td>${f.reason}</td>
+        <td>₼${f.amount.toFixed(2)}</td>
+        <td>${f.paid ? '<span class="badge success">Paid</span>' : '<span class="badge danger">Unpaid</span>'}</td>
+        <td>${f.paid ? '' : `<button class="btn btn-sm primary" onclick="alert('Fine marked as paid (stub)')">Mark paid</button>`}</td>
+      </tr>`).join('')}</tbody></table></div>` : '<div class="empty">No fines.</div>';
+
+    // synth history 8-12
+    const histN = 8 + (m.id.charCodeAt(m.id.length-1) % 5);
+    const bookIds = MOCK.libraryBooks.map(b => b.id);
+    const histRows = [];
+    for (let i = 0; i < histN; i++) {
+      const bid = bookIds[(i * 3 + m.id.length) % bookIds.length];
+      const b = findBook(bid);
+      const issued = new Date(); issued.setDate(issued.getDate() - (60 + i*22));
+      const returned = new Date(issued); returned.setDate(returned.getDate() + (8 + (i%7)));
+      histRows.push(`<tr>
+        <td><span style="font-size:20px;margin-right:6px">${b.cover}</span> ${b.title}</td>
+        <td>${UniFlow.fmt.date(issued.toISOString())}</td>
+        <td>${UniFlow.fmt.date(returned.toISOString())}</td>
+        <td>${Math.round((returned-issued)/(1000*60*60*24))} days</td>
+      </tr>`);
+    }
+    const historyTbl = `<div class="table-wrap"><table class="data">
+      <thead><tr><th>Book</th><th>Borrowed</th><th>Returned</th><th>Kept</th></tr></thead>
+      <tbody>${histRows.join('')}</tbody></table></div>`;
+
+    const tabBody = ({
+      active: activeTbl, holds: holdsTbl, fines: finesTbl, history: historyTbl
+    })[state.detailTab];
+
+    return `
+      <div class="card mt-16" id="detail-card">
+        <div class="profile-head">
+          <div class="avatar-lg">${initials}</div>
+          <div class="flex-1">
+            <h2>${m.name}</h2>
+            <div class="sub"><code>${m.id}</code> · ${m.kind} · ${m.dept} · ${m.email}</div>
+            <div class="row mt-12" style="gap:6px;flex-wrap:wrap">
+              <span class="badge info">${s.total} total loans</span>
+              <span class="badge ${s.active.length?'success':'muted'}">${s.active.length} active</span>
+              <span class="badge ${s.overdue?'danger':'muted'}">${s.overdue} overdue</span>
+              <span class="badge ${s.unpaid?'warn':'muted'}">₼${s.unpaid.toFixed(2)} unpaid</span>
+              ${blocked ? '<span class="badge danger">Borrowing blocked</span>' : ''}
+            </div>
+          </div>
+          <div class="row">
+            <button class="btn ghost" onclick="alert('Reminder sent to ${m.email} (stub)')">📨 Send reminder</button>
+            <button class="btn ${blocked?'':'danger'}" id="block-btn">${blocked?'Unblock borrowing':'Block borrowing'}</button>
+            <button class="btn btn-sm ghost" id="detail-close">✕</button>
+          </div>
+        </div>
+        <div class="tabs mt-16" id="detail-tabs">
+          <button class="${state.detailTab==='active'?'active':''}"  data-dt="active">Active loans (${s.active.length})</button>
+          <button class="${state.detailTab==='holds'?'active':''}"   data-dt="holds">Holds (${s.holds.length})</button>
+          <button class="${state.detailTab==='fines'?'active':''}"   data-dt="fines">Fines (${s.fines.length})</button>
+          <button class="${state.detailTab==='history'?'active':''}" data-dt="history">History</button>
+        </div>
+        <div class="mt-12">${tabBody}</div>
+      </div>
+    `;
+  }
+
+  function render() {
+    const k = kpis();
+    UniFlow.setContent(`
+      <div class="card">
+        <div class="filters">
+          <div class="field flex-1">
+            <label>Search</label>
+            <input id="f-q" type="search" value="${state.q.replace(/"/g,'&quot;')}" placeholder="Name or ID...">
+          </div>
+          <div class="field">
+            <label>Kind</label>
+            <select id="f-kind">${['All','Student','Teacher'].map(o => `<option ${o===state.kind?'selected':''}>${o}</option>`).join('')}</select>
+          </div>
+          <div class="field">
+            <label>Status</label>
+            <select id="f-status">${['All','Has overdue','Has fines','Active'].map(o => `<option ${o===state.status?'selected':''}>${o}</option>`).join('')}</select>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid kpi mt-16">
+        <div class="card kpi-card"><div class="label">Total members</div><div class="value">${k.total}</div><div class="delta">${MOCK.students.length} students · ${MOCK.employees.length} teachers</div></div>
+        <div class="card kpi-card"><div class="label">Active borrowers</div><div class="value">${k.active}</div><div class="delta">with at least 1 loan</div></div>
+        <div class="card kpi-card"><div class="label">With overdue</div><div class="value">${k.overdue}</div><div class="delta">${k.overdue?'follow-up needed':'all clear'}</div></div>
+        <div class="card kpi-card"><div class="label">With unpaid fines</div><div class="value">${k.fines}</div><div class="delta">collect at desk</div></div>
+      </div>
+
+      <div class="card mt-16">
+        <div class="row between"><h2>Members</h2><span class="text-muted text-sm">${filtered().length} shown</span></div>
+        <div class="table-wrap mt-12">
+          <table class="data">
+            <thead><tr>
+              <th>Name</th><th>ID</th><th>Kind</th><th>Dept</th>
+              <th>Total</th><th>Active</th><th>Overdue</th><th>Unpaid</th><th>Tier</th><th></th>
+            </tr></thead>
+            <tbody id="rows">${tableRows()}</tbody>
+          </table>
+        </div>
+      </div>
+      <div id="detail-mount">${detailPanel()}</div>
+    `);
+    bindEvents();
+  }
+
+  function bindEvents() {
+    document.getElementById('f-q').addEventListener('input', e => { state.q = e.target.value; refreshTable(); });
+    document.getElementById('f-kind').addEventListener('change', e => { state.kind = e.target.value; render(); });
+    document.getElementById('f-status').addEventListener('change', e => { state.status = e.target.value; render(); });
+
+    document.querySelectorAll('[data-view]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        state.selectedId = btn.dataset.view;
+        state.detailTab = 'active';
+        render();
+        setTimeout(() => {
+          const el = document.getElementById('detail-card');
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 50);
+      });
+    });
+    document.querySelectorAll('.member-row').forEach(row => {
+      row.addEventListener('click', () => {
+        state.selectedId = row.dataset.id;
+        state.detailTab = 'active';
+        render();
+      });
+    });
+
+    const closeBtn = document.getElementById('detail-close');
+    if (closeBtn) closeBtn.addEventListener('click', () => { state.selectedId = null; render(); });
+
+    const blockBtn = document.getElementById('block-btn');
+    if (blockBtn) blockBtn.addEventListener('click', () => {
+      state.blocked[state.selectedId] = !state.blocked[state.selectedId];
+      render();
+    });
+
+    document.querySelectorAll('#detail-tabs button').forEach(b => {
+      b.addEventListener('click', () => { state.detailTab = b.dataset.dt; render(); });
+    });
+  }
+
+  function refreshTable() {
+    document.getElementById('rows').innerHTML = tableRows();
+    document.querySelectorAll('[data-view]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        state.selectedId = btn.dataset.view;
+        state.detailTab = 'active';
+        render();
+      });
+    });
+    document.querySelectorAll('.member-row').forEach(row => {
+      row.addEventListener('click', () => {
+        state.selectedId = row.dataset.id;
+        state.detailTab = 'active';
+        render();
+      });
+    });
+  }
+
+  render();
+</script>
+</body></html>

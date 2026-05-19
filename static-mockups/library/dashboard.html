@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>Library Dashboard — UniFlow</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static-mockups/assets/css/styles.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  .book-row { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px dashed var(--border); align-items: center; }
+  .book-row:last-child { border-bottom: none; }
+  .book-cover { font-size: 24px; width: 36px; height: 44px; display: grid; place-items: center; background: var(--bg); border-radius: 6px; flex: none; }
+  .book-meta { flex: 1; min-width: 0; }
+  .book-meta .ttl { font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .book-meta .sub { font-size: 12px; color: var(--muted); }
+  .od-days { color: #b91c1c; font-weight: 700; font-size: 12px; }
+  .feed-item { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px dashed var(--border); font-size: 13px; }
+  .feed-item:last-child { border-bottom: none; }
+  .feed-icon { width: 28px; height: 28px; border-radius: 999px; background: var(--bg); display: grid; place-items: center; flex: none; }
+  .chart-sm { height: 220px; }
+</style>
+</head><body>
+<script src="/static-mockups/assets/js/mock-data.js"></script>
+<script src="/static-mockups/assets/js/app.js"></script>
+<script>
+  UniFlow.renderShell({ title: 'Library Dashboard' });
+
+  const books = MOCK.libraryBooks;
+  const loans = MOCK.libraryLoans;
+  const holds = MOCK.libraryHolds;
+  const fines = MOCK.libraryFines;
+
+  const today = new Date(); today.setHours(0,0,0,0);
+  const isToday = (d) => { const x = new Date(d); x.setHours(0,0,0,0); return x.getTime() === today.getTime(); };
+  const bookById = (id) => books.find(b => b.id === id) || { title: id, cover: '📖' };
+
+  const totalTitles = books.length;
+  const totalCopies = books.reduce((s,b) => s + b.copies, 0);
+  const loansToday = 14; // synth
+  const activeLoans = loans.filter(l => l.status === 'Active' || l.status === 'Overdue').length;
+  const overdueCount = loans.filter(l => l.status === 'Overdue').length;
+  const unpaidFines = fines.filter(f => !f.paid).reduce((s,f) => s + f.amount, 0);
+  const holdsWaiting = holds.filter(h => h.status === 'Waiting').length;
+  const readyForPickup = holds.filter(h => h.status === 'Ready for pickup').length;
+
+  // Synth: due today list
+  const dueToday = [
+    { book: 'B-004', userId: 'S-1002', userName: 'Rashad Aliyev', issued: -14 },
+    { book: 'B-010', userId: 'S-1005', userName: 'Nigar Suleymanli', issued: -14 },
+    { book: 'B-017', userId: 'S-1004', userName: 'Emil Hasanov', issued: -7 },
+    { book: 'B-016', userId: 'S-1003', userName: 'Lale Mammadova', issued: -14 },
+  ];
+
+  UniFlow.setContent(`
+    <div class="row between">
+      <p class="text-muted">Branch: Main Library · ${new Date().toLocaleDateString('en-GB',{weekday:'long', day:'2-digit', month:'short', year:'numeric'})}</p>
+      <div>
+        <button class="btn ghost" onclick="alert('Today\\'s report exported (stub)')">Export today's report</button>
+        <button class="btn primary" onclick="alert('Sent reminders to ' + ${overdueCount} + ' members (stub)')">Send all overdue reminders</button>
+      </div>
+    </div>
+
+    <div class="grid kpi mt-12">
+      <div class="card kpi-card"><div class="label">Total titles</div><div class="value">${totalTitles}</div><div class="delta">${books.filter(b=>b.eBook).length} with eBook</div></div>
+      <div class="card kpi-card"><div class="label">Total copies</div><div class="value">${totalCopies}</div><div class="delta">across all shelves</div></div>
+      <div class="card kpi-card"><div class="label">Loans today</div><div class="value">${loansToday}</div><div class="delta up">+3 vs yesterday</div></div>
+      <div class="card kpi-card"><div class="label">Active loans</div><div class="value">${activeLoans}</div><div class="delta">${overdueCount} overdue</div></div>
+      <div class="card kpi-card"><div class="label">Overdue</div><div class="value" style="color:#b91c1c">${overdueCount}</div><div class="delta">needs follow-up</div></div>
+      <div class="card kpi-card"><div class="label">Unpaid fines</div><div class="value">₼${unpaidFines.toFixed(2)}</div><div class="delta">${fines.filter(f=>!f.paid).length} members</div></div>
+      <div class="card kpi-card"><div class="label">Holds waiting</div><div class="value">${holdsWaiting}</div><div class="delta">queue</div></div>
+      <div class="card kpi-card"><div class="label">Ready for pickup</div><div class="value">${readyForPickup}</div><div class="delta">notify members</div></div>
+    </div>
+
+    <div class="grid mt-16" style="grid-template-columns: 2fr 1fr; gap: 16px">
+      <div>
+        <div class="card">
+          <div class="row between"><h2>Loans this week</h2><span class="badge info">Daily issues</span></div>
+          <div class="chart-wrap chart-sm"><canvas id="ch-week"></canvas></div>
+        </div>
+
+        <div class="card mt-16">
+          <div class="row between"><h2>Most popular this month</h2><span class="text-muted text-sm">Top 6 by loans</span></div>
+          <div class="chart-wrap chart-sm"><canvas id="ch-pop"></canvas></div>
+        </div>
+
+        <div class="card mt-16">
+          <div class="row between"><h2>Returns due today</h2><span class="badge warn">${dueToday.length} due</span></div>
+          <div class="table-wrap mt-12">
+            <table class="data">
+              <thead><tr><th>Book</th><th>Member</th><th>Days kept</th><th>Action</th></tr></thead>
+              <tbody>
+                ${dueToday.map(d => {
+                  const b = bookById(d.book);
+                  return `<tr>
+                    <td><div class="book-row" style="padding:0;border:none">
+                      <div class="book-cover">${b.cover}</div>
+                      <div class="book-meta"><div class="ttl">${b.title}</div><div class="sub">${b.authors||''}</div></div>
+                    </div></td>
+                    <td><div>${d.userName}</div><div class="text-muted text-sm">${d.userId}</div></td>
+                    <td>${Math.abs(d.issued)} days</td>
+                    <td><button class="btn btn-sm ghost" onclick="alert('Reminder sent to ${d.userName} (stub)')">Send reminder</button></td>
+                  </tr>`;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="card">
+          <div class="row between"><h2>Overdue</h2><span class="badge danger">${overdueCount}</span></div>
+          <div class="mt-12">
+            ${loans.filter(l => l.status === 'Overdue').map(l => {
+              const b = bookById(l.book);
+              const dueDate = new Date(l.due);
+              const daysOver = Math.floor((today - dueDate) / 86400000);
+              return `<div class="book-row">
+                <div class="book-cover">${b.cover}</div>
+                <div class="book-meta">
+                  <div class="ttl">${b.title}</div>
+                  <div class="sub">${l.userName} · <span class="od-days">${daysOver}d overdue</span></div>
+                </div>
+                <button class="btn btn-sm ghost" onclick="alert('Notified ${l.userName} (stub)')">Notify</button>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+
+        <div class="card mt-16">
+          <div class="row between"><h2>Holds — ready</h2><span class="badge success">${readyForPickup}</span></div>
+          <div class="mt-12">
+            ${holds.filter(h => h.status === 'Ready for pickup').map(h => {
+              const b = bookById(h.book);
+              return `<div class="book-row">
+                <div class="book-cover">${b.cover}</div>
+                <div class="book-meta">
+                  <div class="ttl">${b.title}</div>
+                  <div class="sub">${h.userName} · placed ${UniFlow.fmt.date(h.placed)}</div>
+                </div>
+                <button class="btn btn-sm primary" onclick="alert('Marked collected (stub)')">Collected</button>
+              </div>`;
+            }).join('') || '<p class="empty">No holds ready for pickup.</p>'}
+          </div>
+        </div>
+
+        <div class="card mt-16">
+          <h2>Latest activity</h2>
+          <div class="mt-12">
+            ${[
+              { ic: '📤', txt: '<strong>Issued</strong> "Clean Code" to Rashad Aliyev', t: '2 min ago' },
+              { ic: '📥', txt: '<strong>Returned</strong> "Deep Learning" by Dr. Samir B.', t: '14 min ago' },
+              { ic: '🔖', txt: '<strong>Hold placed</strong> on "Sapiens" by Aysel Q.', t: '32 min ago' },
+              { ic: '💰', txt: '<strong>Fine paid</strong> ₼1.65 — Aysel Q.', t: '1 hr ago' },
+              { ic: '➕', txt: '<strong>Book added</strong> "AI: A Modern Approach"', t: '2 hr ago' },
+              { ic: '📤', txt: '<strong>Issued</strong> "Calculus Vol. 1" to Lale M.', t: '3 hr ago' },
+            ].map(a => `<div class="feed-item">
+              <div class="feed-icon">${a.ic}</div>
+              <div style="flex:1">${a.txt}<div class="text-muted text-sm">${a.t}</div></div>
+            </div>`).join('')}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mt-16">
+      <div class="row between"><h2>Titles by subject</h2><span class="text-muted text-sm">${MOCK.librarySubjects.length} subjects</span></div>
+      <div class="chart-wrap" style="height:280px"><canvas id="ch-subj"></canvas></div>
+    </div>
+  `);
+
+  // Charts
+  const weekLabels = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const weekData = [28, 32, 25, 30, 35, 14, 12];
+  new Chart(document.getElementById('ch-week'), {
+    type: 'line',
+    data: { labels: weekLabels, datasets: [{ label: 'Loans', data: weekData, borderColor: '#1A5AD7', backgroundColor: 'rgba(26,90,215,.12)', fill: true, tension: .35, borderWidth: 2, pointRadius: 4 }] },
+    options: { maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+  });
+
+  const popTitles = ['Sapiens','Clean Code','Deep Learning','Meditations','Algorithms','Lean Startup'];
+  const popCounts = [42, 38, 31, 28, 24, 19];
+  new Chart(document.getElementById('ch-pop'), {
+    type: 'bar',
+    data: { labels: popTitles, datasets: [{ label: 'Loans', data: popCounts, backgroundColor: '#1A5AD7' }] },
+    options: { indexAxis: 'y', maintainAspectRatio: false, plugins: { legend: { display: false } } }
+  });
+
+  // Subject breakdown
+  const subjCounts = {};
+  MOCK.librarySubjects.forEach(s => subjCounts[s] = 0);
+  books.forEach(b => { subjCounts[b.subject] = (subjCounts[b.subject] || 0) + 1; });
+  const subjLabels = Object.keys(subjCounts).filter(k => subjCounts[k] > 0);
+  const subjData = subjLabels.map(k => subjCounts[k]);
+  new Chart(document.getElementById('ch-subj'), {
+    type: 'doughnut',
+    data: { labels: subjLabels, datasets: [{ data: subjData, backgroundColor: ['#1A5AD7','#16A34A','#F59E0B','#DC2626','#7C3AED','#0EA5E9','#EC4899','#22C55E','#F97316','#64748B'] }] },
+    options: { maintainAspectRatio: false, plugins: { legend: { position: 'right' } } }
+  });
+</script>
+</body></html>

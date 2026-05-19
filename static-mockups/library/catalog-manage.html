@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>Catalogue — UniFlow</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static-mockups/assets/css/styles.css">
+<style>
+  .cell-cover { font-size: 28px; }
+  .row-clickable { cursor: pointer; }
+  .row-clickable:hover { background: var(--bg); }
+  .row-clickable.active { background: rgba(26,90,215,.08); }
+  .modal-wrap { position: fixed; inset: 0; background: rgba(11,18,32,.55); display: none; align-items: center; justify-content: center; z-index: 100; padding: 16px; }
+  .modal-wrap.open { display: flex; }
+  .modal { background: var(--card,#fff); border-radius: 12px; padding: 22px; max-width: 720px; width: 100%; max-height: 90vh; overflow-y: auto; }
+  .copy-row { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px dashed var(--border); align-items: center; font-size: 13px; }
+  .copy-row:last-child { border-bottom: none; }
+  .copy-id { font-family: monospace; font-size: 12px; background: var(--bg); padding: 2px 6px; border-radius: 4px; }
+</style>
+</head><body>
+<script src="/static-mockups/assets/js/mock-data.js"></script>
+<script src="/static-mockups/assets/js/app.js"></script>
+<script>
+  UniFlow.renderShell({ title: 'Catalogue' });
+
+  let books = MOCK.libraryBooks.slice();
+  const loans = MOCK.libraryLoans;
+  let filters = { q: '', subject: 'All', lang: 'All', format: 'Any', avail: 'Any' };
+  let selectedId = null;
+  let detailTab = 'details';
+
+  const totalCopies = () => books.reduce((s,b) => s + b.copies, 0);
+  const eBooks = () => books.filter(b => b.eBook).length;
+  const outForLoan = () => books.reduce((s,b) => s + (b.copies - b.available), 0);
+  const damaged = 7; // synth
+
+  function filtered() {
+    return books.filter(b => {
+      if (filters.q) {
+        const q = filters.q.toLowerCase();
+        if (!(b.title.toLowerCase().includes(q) || b.authors.toLowerCase().includes(q) || b.isbn.toLowerCase().includes(q))) return false;
+      }
+      if (filters.subject !== 'All' && b.subject !== filters.subject) return false;
+      if (filters.lang !== 'All' && b.lang !== filters.lang) return false;
+      if (filters.format === 'eBook' && !b.eBook) return false;
+      if (filters.format === 'Print' && b.eBook && b.copies === 0) return false;
+      if (filters.avail === 'Available' && b.available === 0) return false;
+      if (filters.avail === 'Out of stock' && b.available > 0) return false;
+      return true;
+    });
+  }
+
+  // Synth copies for a book
+  function copiesFor(book) {
+    const arr = [];
+    const statuses = ['On shelf','On loan','Reserved','Damaged','Missing'];
+    for (let i = 1; i <= book.copies; i++) {
+      let st;
+      if (i <= book.available) st = 'On shelf';
+      else if (i === book.available + 1) st = 'On loan';
+      else st = statuses[Math.min(i, 4)] || 'On loan';
+      arr.push({ id: `${book.id}-C${String(i).padStart(2,'0')}`, status: st, shelf: book.shelf, acquired: '2021-08-' + String(10 + i) });
+    }
+    return arr;
+  }
+
+  function render() {
+    UniFlow.setContent(`
+      <div class="row between">
+        <div></div>
+        <div>
+          <button class="btn ghost" onclick="alert('MARC import (stub)')">Import MARC</button>
+          <button class="btn ghost" onclick="alert('CSV exported (stub)')">Export CSV</button>
+          <button class="btn primary" id="open-add">+ Add new book</button>
+        </div>
+      </div>
+
+      <div class="grid kpi mt-12">
+        <div class="card kpi-card"><div class="label">Total titles</div><div class="value">${books.length}</div><div class="delta">in catalogue</div></div>
+        <div class="card kpi-card"><div class="label">Total copies</div><div class="value">${totalCopies()}</div><div class="delta">physical + e</div></div>
+        <div class="card kpi-card"><div class="label">eBooks</div><div class="value">${eBooks()}</div><div class="delta">digitally available</div></div>
+        <div class="card kpi-card"><div class="label">Out for loan</div><div class="value">${outForLoan()}</div><div class="delta">currently issued</div></div>
+        <div class="card kpi-card"><div class="label">Damaged / missing</div><div class="value">${damaged}</div><div class="delta">flagged</div></div>
+      </div>
+
+      <div class="card mt-16">
+        <div class="filters">
+          <input id="f-q" type="search" placeholder="Search title, author, ISBN..." value="${filters.q}">
+          <select id="f-subj">
+            <option>All</option>
+            ${MOCK.librarySubjects.map(s => `<option ${s===filters.subject?'selected':''}>${s}</option>`).join('')}
+          </select>
+          <select id="f-lang">
+            <option value="All">All languages</option>
+            <option value="EN" ${filters.lang==='EN'?'selected':''}>English</option>
+            <option value="AZ" ${filters.lang==='AZ'?'selected':''}>Azerbaijani</option>
+          </select>
+          <select id="f-fmt">
+            <option>Any</option><option>eBook</option><option>Print</option>
+          </select>
+          <select id="f-av">
+            <option>Any</option><option>Available</option><option>Out of stock</option>
+          </select>
+          <button class="btn ghost btn-sm" id="f-clear">Clear filters</button>
+        </div>
+
+        <div class="table-wrap mt-12">
+          <table class="data">
+            <thead><tr><th></th><th>Title</th><th>Subject</th><th>Year</th><th>Copies</th><th>Available</th><th>Format</th><th>Shelf</th><th>Rating</th><th>Actions</th></tr></thead>
+            <tbody id="tbody">
+              ${filtered().map(b => `
+                <tr data-id="${b.id}" class="row-clickable ${selectedId===b.id?'active':''}">
+                  <td class="cell-cover">${b.cover}</td>
+                  <td><div style="font-weight:600">${b.title}</div><div class="text-muted text-sm">${b.authors}</div><div class="text-muted text-sm">ISBN ${b.isbn}</div></td>
+                  <td><span class="badge muted">${b.subject}</span></td>
+                  <td>${b.year}</td>
+                  <td>${b.copies}</td>
+                  <td>${b.available===0?`<span style="color:#b91c1c;font-weight:600">${b.available}</span>`:b.available}</td>
+                  <td>${b.eBook?'<span class="badge info">eBook</span>':'<span class="badge muted">Print</span>'}</td>
+                  <td><code>${b.shelf}</code></td>
+                  <td>⭐ ${b.rating.toFixed(1)}</td>
+                  <td>
+                    <button class="btn btn-sm ghost" data-edit="${b.id}">Edit</button>
+                    <button class="btn btn-sm ghost" data-copies="${b.id}">Copies</button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          ${filtered().length === 0 ? '<p class="empty">No books match the current filters.</p>' : ''}
+        </div>
+      </div>
+
+      ${selectedId ? renderDetail() : ''}
+
+      ${renderAddModal()}
+    `);
+    wire();
+  }
+
+  function renderDetail() {
+    const b = books.find(x => x.id === selectedId);
+    if (!b) return '';
+    return `
+      <div class="card mt-16">
+        <div class="row between">
+          <div class="row" style="gap:14px;align-items:center">
+            <div style="font-size:48px">${b.cover}</div>
+            <div>
+              <h2 style="margin:0">${b.title}</h2>
+              <p class="text-muted text-sm" style="margin:4px 0">${b.authors} · ${b.publisher}, ${b.year}</p>
+              <div class="row" style="gap:10px">
+                <span class="badge muted">${b.subject}</span>
+                <span class="badge muted">${b.lang}</span>
+                ${b.eBook?'<span class="badge info">eBook</span>':''}
+                <span>${b.available}/${b.copies} available</span>
+              </div>
+            </div>
+          </div>
+          <button class="btn ghost btn-sm" id="close-detail">Close</button>
+        </div>
+
+        <div class="tabs mt-16">
+          ${['details','copies','history'].map(t => `<button data-dtab="${t}" class="${detailTab===t?'active':''}">${t==='details'?'Details':t==='copies'?'Copies':'Loan history'}</button>`).join('')}
+        </div>
+
+        <div class="mt-16">
+          ${detailTab === 'details' ? renderDetailDetails(b) : detailTab === 'copies' ? renderDetailCopies(b) : renderDetailHistory(b)}
+        </div>
+      </div>
+    `;
+  }
+
+  function renderDetailDetails(b) {
+    return `
+      <div class="grid two" style="gap:16px">
+        <div>
+          <div class="info-row"><div class="k">Title</div><div><input type="text" value="${b.title}" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px"></div></div>
+          <div class="info-row"><div class="k">Authors</div><div><input type="text" value="${b.authors}" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px"></div></div>
+          <div class="info-row"><div class="k">ISBN</div><div><code>${b.isbn}</code></div></div>
+          <div class="info-row"><div class="k">Publisher</div><div><input type="text" value="${b.publisher}" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px"></div></div>
+          <div class="info-row"><div class="k">Year</div><div>${b.year}</div></div>
+          <div class="info-row"><div class="k">Pages</div><div>${b.pages}</div></div>
+          <div class="info-row"><div class="k">Language</div><div>${b.lang}</div></div>
+          <div class="info-row"><div class="k">Shelf</div><div><code>${b.shelf}</code></div></div>
+          <div class="info-row"><div class="k">Rating</div><div>⭐ ${b.rating.toFixed(1)}</div></div>
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--muted)">Summary</label>
+          <textarea style="width:100%;min-height:160px;padding:8px;border:1px solid var(--border);border-radius:6px;font:inherit;margin-top:4px">${b.summary}</textarea>
+          <div class="row mt-12" style="justify-content:flex-end">
+            <button class="btn ghost btn-sm">Discard</button>
+            <button class="btn primary btn-sm" onclick="alert('Saved (stub)')">Save changes</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderDetailCopies(b) {
+    const cps = copiesFor(b);
+    return `
+      <div class="row between">
+        <h3 style="margin:0">Individual copies (${cps.length})</h3>
+        <button class="btn ghost btn-sm" onclick="alert('Add copy (stub)')">+ Add copy</button>
+      </div>
+      <div class="mt-12">
+        ${cps.map(c => {
+          const cls = c.status==='On shelf'?'success':c.status==='On loan'?'info':c.status==='Reserved'?'warn':c.status==='Damaged'?'danger':'muted';
+          return `<div class="copy-row">
+            <span class="copy-id">${c.id}</span>
+            <span class="text-muted text-sm">Shelf ${c.shelf} · acquired ${c.acquired}</span>
+            <div style="flex:1"></div>
+            <span class="badge ${cls}">${c.status}</span>
+            <button class="btn btn-sm ghost" onclick="alert('Mark damaged (stub)')">Damaged</button>
+            <button class="btn btn-sm ghost" onclick="alert('Withdraw (stub)')">Withdraw</button>
+            <button class="btn btn-sm ghost" onclick="alert('Transfer (stub)')">Transfer</button>
+          </div>`;
+        }).join('')}
+      </div>
+    `;
+  }
+
+  function renderDetailHistory(b) {
+    const real = loans.filter(l => l.book === b.id);
+    const synth = [
+      { id: 'L-0985', userName: 'Tural Ismayilov', issued: '2024-11-12', returned: '2024-11-26', status: 'Returned' },
+      { id: 'L-0962', userName: 'Lale Mammadova',  issued: '2024-10-04', returned: '2024-10-18', status: 'Returned' },
+      { id: 'L-0941', userName: 'Emil Hasanov',    issued: '2024-08-22', returned: '2024-09-05', status: 'Returned' },
+      { id: 'L-0918', userName: 'Aysel Quliyeva',  issued: '2024-07-01', returned: '2024-07-14', status: 'Returned' },
+      { id: 'L-0903', userName: 'Rashad Aliyev',   issued: '2024-05-14', returned: '2024-05-28', status: 'Returned' },
+    ];
+    const combined = [...real, ...synth].slice(0, 10);
+    return `
+      <div class="table-wrap">
+        <table class="data">
+          <thead><tr><th>Loan ID</th><th>Member</th><th>Issued</th><th>Returned</th><th>Status</th></tr></thead>
+          <tbody>
+            ${combined.map(l => `<tr>
+              <td><code>${l.id}</code></td>
+              <td>${l.userName}</td>
+              <td>${typeof l.issued === 'string' ? l.issued : UniFlow.fmt.date(l.issued)}</td>
+              <td>${l.returned ? (typeof l.returned === 'string' ? l.returned : UniFlow.fmt.date(l.returned)) : '—'}</td>
+              <td><span class="badge ${l.status==='Active'?'info':l.status==='Overdue'?'danger':'muted'}">${l.status}</span></td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function renderAddModal() {
+    return `
+      <div id="add-modal" class="modal-wrap">
+        <div class="modal">
+          <div class="row between"><h2 style="margin:0">Add new book</h2><button class="btn ghost btn-sm" id="cancel-add">✕</button></div>
+          <div class="grid two mt-12" style="gap:12px">
+            <div class="field"><label>Title</label><input id="n-title" type="text" placeholder="The book title"></div>
+            <div class="field"><label>Author(s)</label><input id="n-authors" type="text" placeholder="Last, First"></div>
+            <div class="field"><label>ISBN</label><input id="n-isbn" type="text" placeholder="978-..."></div>
+            <div class="field"><label>Subject</label><select id="n-subj">${MOCK.librarySubjects.map(s => `<option>${s}</option>`).join('')}</select></div>
+            <div class="field"><label>Publisher</label><input id="n-pub" type="text"></div>
+            <div class="field"><label>Year</label><input id="n-year" type="number" value="${new Date().getFullYear()}"></div>
+            <div class="field"><label>Pages</label><input id="n-pages" type="number"></div>
+            <div class="field"><label>Language</label><select id="n-lang"><option>EN</option><option>AZ</option></select></div>
+            <div class="field"><label>Shelf</label><input id="n-shelf" type="text" placeholder="CS-204"></div>
+            <div class="field"><label>Copies</label><input id="n-copies" type="number" value="1" min="1"></div>
+          </div>
+          <div class="field"><label><input id="n-ebook" type="checkbox"> Available as eBook</label></div>
+          <div class="field"><label>Summary</label><textarea id="n-sum" style="min-height:80px"></textarea></div>
+          <div class="row mt-16" style="justify-content:flex-end">
+            <button class="btn ghost" id="cancel-add-2">Cancel</button>
+            <button class="btn primary" id="save-add">Save book</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function wire() {
+    document.getElementById('f-q').addEventListener('input', e => { filters.q = e.target.value; render(); });
+    document.getElementById('f-subj').addEventListener('change', e => { filters.subject = e.target.value; render(); });
+    document.getElementById('f-lang').addEventListener('change', e => { filters.lang = e.target.value; render(); });
+    document.getElementById('f-fmt').addEventListener('change', e => { filters.format = e.target.value; render(); });
+    document.getElementById('f-av').addEventListener('change', e => { filters.avail = e.target.value; render(); });
+    document.getElementById('f-clear').onclick = () => { filters = { q:'', subject:'All', lang:'All', format:'Any', avail:'Any' }; render(); };
+
+    document.querySelectorAll('[data-id]').forEach(tr => tr.addEventListener('click', e => {
+      if (e.target.closest('button')) return;
+      selectedId = tr.dataset.id; render();
+      window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+    }));
+    document.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', e => {
+      selectedId = b.dataset.edit; detailTab = 'details'; render();
+    }));
+    document.querySelectorAll('[data-copies]').forEach(b => b.addEventListener('click', e => {
+      selectedId = b.dataset.copies; detailTab = 'copies'; render();
+    }));
+    document.querySelectorAll('[data-dtab]').forEach(b => b.addEventListener('click', () => {
+      detailTab = b.dataset.dtab; render();
+    }));
+    const cd = document.getElementById('close-detail');
+    if (cd) cd.onclick = () => { selectedId = null; render(); };
+
+    // Modal
+    const modal = document.getElementById('add-modal');
+    document.getElementById('open-add').onclick = () => modal.classList.add('open');
+    document.getElementById('cancel-add').onclick = () => modal.classList.remove('open');
+    document.getElementById('cancel-add-2').onclick = () => modal.classList.remove('open');
+    document.getElementById('save-add').onclick = () => {
+      const t = document.getElementById('n-title').value.trim();
+      if (!t) { alert('Title required.'); return; }
+      const nb = {
+        id: 'B-' + String(900 + books.length).padStart(3,'0'),
+        title: t,
+        authors: document.getElementById('n-authors').value || 'Unknown',
+        isbn: document.getElementById('n-isbn').value || '978-0-000-00000-0',
+        subject: document.getElementById('n-subj').value,
+        publisher: document.getElementById('n-pub').value || '—',
+        year: parseInt(document.getElementById('n-year').value, 10) || new Date().getFullYear(),
+        pages: parseInt(document.getElementById('n-pages').value, 10) || 0,
+        lang: document.getElementById('n-lang').value,
+        shelf: document.getElementById('n-shelf').value || 'TBD',
+        cover: '📘',
+        copies: parseInt(document.getElementById('n-copies').value, 10) || 1,
+        available: parseInt(document.getElementById('n-copies').value, 10) || 1,
+        eBook: document.getElementById('n-ebook').checked,
+        rating: 0,
+        summary: document.getElementById('n-sum').value || '',
+      };
+      books.unshift(nb);
+      modal.classList.remove('open');
+      render();
+    };
+  }
+
+  render();
+</script>
+</body></html>

@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>My Library — UniFlow</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static-mockups/assets/css/styles.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  .lib-grid { display: grid; grid-template-columns: 1fr 320px; gap: 16px; }
+  @media (max-width: 980px) { .lib-grid { grid-template-columns: 1fr; } }
+  .loan-card { display: grid; grid-template-columns: 56px 1fr auto; gap: 14px; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); align-items: center; }
+  .loan-card + .loan-card { margin-top: 10px; }
+  .loan-cover { width: 56px; height: 72px; display: grid; place-items: center; font-size: 30px; background: var(--primary-soft); border-radius: 8px; }
+  .star-rate { display: inline-flex; gap: 2px; }
+  .star-rate span { cursor: pointer; opacity: .35; font-size: 16px; }
+  .star-rate span.on { opacity: 1; }
+  .booklet { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px,1fr)); gap: 12px; }
+  .booklet .b { padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); text-align: center; }
+  .booklet .b .cov { font-size: 38px; }
+  .booklet .b .t { font-weight: 600; font-size: 13px; margin: 6px 0; line-height: 1.3; }
+  .booklet .b .a { font-size: 11px; color: var(--text-muted); margin-bottom: 8px; }
+</style>
+</head><body>
+<script src="/static-mockups/assets/js/mock-data.js"></script>
+<script src="/static-mockups/assets/js/app.js"></script>
+<script>
+  UniFlow.renderShell({ title: 'My Library' });
+
+  const me = MOCK.students[0]; // S-1001 Aysel
+  const myId = me.id;
+  const initials = me.name.split(' ').map(p => p[0]).join('').slice(0,2);
+  const cardNum = 'LIB-' + me.id + '-2024';
+  const memberSince = '2023-09-12';
+  const validUntil = new Date(); validUntil.setFullYear(validUntil.getFullYear() + 1);
+
+  const findBook = (id) => MOCK.libraryBooks.find(b => b.id === id) || { title: id, authors: '', cover: '📘' };
+
+  const myActiveLoans = MOCK.libraryLoans.filter(l => l.userId === myId && l.status !== 'Returned');
+  const myReturnedLoans = MOCK.libraryLoans.filter(l => l.userId === myId && l.status === 'Returned');
+  const myHolds = MOCK.libraryHolds.filter(h => h.userId === myId);
+  const myFines = MOCK.libraryFines.filter(f => f.userId === myId);
+  const unpaidTotal = myFines.filter(f => !f.paid).reduce((s,f)=>s+f.amount,0);
+  const overdueCount = myActiveLoans.filter(l => l.status === 'Overdue').length;
+
+  // synthesized older history
+  const synthHistory = [
+    { book: 'B-016', issued: '2025-01-12', returned: '2025-01-25', rating: 5 },
+    { book: 'B-010', issued: '2024-11-04', returned: '2024-11-21', rating: 5 },
+    { book: 'B-014', issued: '2024-09-18', returned: '2024-10-03', rating: 4 },
+    { book: 'B-004', issued: '2024-07-22', returned: '2024-08-05', rating: 4 },
+    { book: 'B-012', issued: '2024-05-10', returned: '2024-05-22', rating: 5 },
+  ];
+
+  // CS reading-list synthesised
+  const readingList = ['B-001','B-004','B-014','B-019','B-005'].map(findBook);
+  const suggested  = ['B-020','B-003','B-016'].map(findBook);
+
+  const daysUntilBadge = (dueIso) => {
+    const d = UniFlow.fmt.daysUntil(dueIso);
+    if (d < 0) return `<span class="badge danger">${-d}d overdue</span>`;
+    if (d <= 3) return `<span class="badge warn">due in ${d}d</span>`;
+    return `<span class="badge success">due in ${d}d</span>`;
+  };
+
+  // QR
+  const qrData = encodeURIComponent('UNIFLOW|LIB|' + me.id + '|' + cardNum);
+  const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=160x160&margin=0&data=' + qrData;
+
+  // Tab content builders
+  function tabCurrent() {
+    if (!myActiveLoans.length) return '<div class="empty">No active loans. Visit the catalogue to borrow a book.</div>';
+    return myActiveLoans.map(l => {
+      const b = findBook(l.book);
+      const disableRenew = l.status === 'Overdue' || l.renewals >= 2;
+      const newDue = new Date(); newDue.setDate(newDue.getDate() + 14);
+      const eBookBtn = b.eBook ? `<button class="btn btn-sm ghost" onclick="alert('Opening reader for ${b.title.replace(/'/g,'')} (stub)')">📖 Read online</button>` : '';
+      return `
+        <div class="loan-card">
+          <div class="loan-cover">${b.cover}</div>
+          <div>
+            <div style="font-weight:600">${b.title}</div>
+            <div class="text-muted text-sm">${b.authors}</div>
+            <div class="row mt-8" style="gap:8px;flex-wrap:wrap">
+              ${daysUntilBadge(l.due)}
+              <span class="badge muted">Issued ${UniFlow.fmt.date(l.issued)}</span>
+              <span class="badge muted">Due ${UniFlow.fmt.date(l.due)}</span>
+              <span class="badge info">Renewals ${l.renewals}/2</span>
+            </div>
+          </div>
+          <div class="row" style="flex-direction:column;gap:6px;align-items:stretch">
+            <button class="btn btn-sm primary" ${disableRenew?'disabled':''} onclick="alert('Renewed — new due date: ${UniFlow.fmt.date(newDue.toISOString())}')">Renew</button>
+            <button class="btn btn-sm" onclick="alert('Bring book to the front desk to return (stub)')">Return at desk</button>
+            ${eBookBtn}
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function tabHolds() {
+    if (!myHolds.length) return '<div class="empty">No active holds.</div>';
+    const rows = myHolds.map(h => {
+      const b = findBook(h.book);
+      const cls = h.status === 'Ready for pickup' ? 'success' : 'warn';
+      return `<tr>
+        <td><span style="font-size:22px;margin-right:8px">${b.cover}</span> ${b.title}</td>
+        <td>${UniFlow.fmt.date(h.placed)}</td>
+        <td>#${h.position}</td>
+        <td><span class="badge ${cls}">${h.status}</span></td>
+        <td><button class="btn btn-sm danger" onclick="alert('Hold cancelled (stub)')">Cancel hold</button></td>
+      </tr>`;
+    }).join('');
+    return `<div class="table-wrap"><table class="data">
+      <thead><tr><th>Book</th><th>Placed</th><th>Queue position</th><th>Status</th><th></th></tr></thead>
+      <tbody>${rows}</tbody></table></div>`;
+  }
+
+  function tabFines() {
+    const unpaid = myFines.filter(f => !f.paid).reduce((s,f)=>s+f.amount,0);
+    const banner = unpaid > 0
+      ? `<div class="card" style="background:#FFF7ED;border-color:#FED7AA;display:flex;align-items:center;justify-content:space-between;gap:12px">
+           <div><strong>Unpaid fines</strong>: ₼${unpaid.toFixed(2)}</div>
+           <button class="btn primary" onclick="alert('Payment success — ₼${unpaid.toFixed(2)} cleared (stub)')">Pay ₼${unpaid.toFixed(2)} now</button>
+         </div>`
+      : `<div class="empty">No unpaid fines.</div>`;
+    if (!myFines.length) return '<div class="empty">No fines on record.</div>';
+    const rows = myFines.map(f => `<tr>
+      <td>${UniFlow.fmt.date(f.when)}</td>
+      <td>${f.reason}</td>
+      <td>₼${f.amount.toFixed(2)}</td>
+      <td>${f.paid ? '<span class="badge success">Paid</span>' : '<span class="badge danger">Unpaid</span>'}</td>
+    </tr>`).join('');
+    return `${banner}<div class="table-wrap mt-12"><table class="data">
+      <thead><tr><th>When</th><th>Reason</th><th>Amount</th><th>Status</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>`;
+  }
+
+  function tabHistory() {
+    const all = [
+      ...myReturnedLoans.map(l => ({ book: l.book, issued: l.issued, returned: l.returned, rating: 4 })),
+      ...synthHistory,
+    ];
+    const rows = all.map((h, i) => {
+      const b = findBook(h.book);
+      const days = Math.max(1, Math.round((new Date(h.returned) - new Date(h.issued)) / (1000*60*60*24)));
+      const stars = [1,2,3,4,5].map(n => `<span class="${n<=h.rating?'on':''}" onclick="alert('Rating saved: '+${n}+' stars')">★</span>`).join('');
+      return `<tr>
+        <td><span style="font-size:22px;margin-right:8px">${b.cover}</span> ${b.title}</td>
+        <td>${UniFlow.fmt.date(h.issued)}</td>
+        <td>${UniFlow.fmt.date(h.returned)}</td>
+        <td>${days} days</td>
+        <td><span class="star-rate">${stars}</span></td>
+      </tr>`;
+    }).join('');
+    return `
+      <div class="row between"><strong>26 books read so far</strong><span class="text-muted text-sm">All time</span></div>
+      <div class="chart-wrap mt-12" style="height:180px"><canvas id="readChart"></canvas></div>
+      <div class="table-wrap mt-12"><table class="data">
+        <thead><tr><th>Book</th><th>Borrowed</th><th>Returned</th><th>Kept</th><th>Rating</th></tr></thead>
+        <tbody>${rows}</tbody></table></div>`;
+  }
+
+  function tabReadingList() {
+    return `<div class="booklet">${readingList.map(b => `
+      <div class="b">
+        <div class="cov">${b.cover}</div>
+        <div class="t">${b.title}</div>
+        <div class="a">${b.authors}</div>
+        <button class="btn btn-sm primary" onclick="alert('Hold placed for ${b.title.replace(/'/g,'')} (stub)')">Add to holds</button>
+        ${b.eBook ? `<button class="btn btn-sm ghost mt-8" onclick="alert('Opening reader (stub)')">📖 Read online</button>` : ''}
+      </div>`).join('')}</div>`;
+  }
+
+  function tabDigitalCard() {
+    return `
+      <div style="max-width:380px;margin:0 auto">
+        <div class="id-card student">
+          <div class="holo"></div>
+          <div class="role-tag">Library Member</div>
+          <div class="uni"><div class="mark">U</div> UniFlow Library</div>
+          <div class="body">
+            <div class="photo">${initials}</div>
+            <div>
+              <div class="name">${me.name}</div>
+              <div class="meta">
+                <div>Member since ${new Date(memberSince).toLocaleDateString('en-GB',{month:'short',year:'numeric'})}</div>
+                <div>${me.dept}</div>
+              </div>
+            </div>
+          </div>
+          <div class="footer">
+            <div>
+              <div style="opacity:.8">Card #</div>
+              <div style="font-weight:700"><code style="color:#fff">${cardNum}</code></div>
+              <div style="margin-top:4px;opacity:.8">Valid until ${validUntil.toLocaleDateString('en-GB',{month:'short',year:'numeric'})}</div>
+            </div>
+            <div class="qr"><img src="${qrUrl}" alt="QR"></div>
+          </div>
+        </div>
+        <div class="row mt-16" style="gap:8px">
+          <button class="btn primary flex-1" onclick="alert('Added to Apple Wallet (stub)')">📲 Add to wallet</button>
+          <button class="btn flex-1" onclick="alert('Show this screen to the librarian at the front desk')">🪪 Show at desk</button>
+        </div>
+        <p class="text-muted text-sm mt-12" style="text-align:center">QR encodes <code>UNIFLOW|LIB|${me.id}|${cardNum}</code></p>
+      </div>`;
+  }
+
+  const tabs = [
+    { id: 'current',  label: 'Currently borrowed', render: tabCurrent },
+    { id: 'holds',    label: 'Holds & reservations', render: tabHolds },
+    { id: 'fines',    label: 'Fines', render: tabFines },
+    { id: 'history',  label: 'Reading history', render: tabHistory },
+    { id: 'list',     label: 'Reading list', render: tabReadingList },
+    { id: 'card',     label: 'Digital card', render: tabDigitalCard },
+  ];
+
+  let activeTab = 'current';
+  let readChartInstance = null;
+
+  function renderTabs() {
+    const buttons = tabs.map(t => `<button class="${t.id===activeTab?'active':''}" data-tab="${t.id}">${t.label}</button>`).join('');
+    const body = tabs.find(t => t.id === activeTab).render();
+    document.getElementById('tabs-bar').innerHTML = buttons;
+    document.getElementById('tabs-body').innerHTML = body;
+    document.querySelectorAll('#tabs-bar button').forEach(b => {
+      b.addEventListener('click', () => { activeTab = b.dataset.tab; renderTabs(); });
+    });
+    if (activeTab === 'history') mountChart();
+  }
+
+  function mountChart() {
+    const ctx = document.getElementById('readChart');
+    if (!ctx) return;
+    if (readChartInstance) readChartInstance.destroy();
+    const labels = ['Jun','Jul','Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar','Apr','May'];
+    const data = [1,2,1,3,2,2,3,4,2,2,1,3];
+    readChartInstance = new Chart(ctx, {
+      type: 'bar',
+      data: { labels, datasets: [{ label: 'Books read', data, backgroundColor: '#1A5AD7', borderRadius: 6 }] },
+      options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }, maintainAspectRatio: false }
+    });
+  }
+
+  UniFlow.setContent(`
+    <div class="card">
+      <div class="profile-head">
+        <div class="avatar-lg">${initials}</div>
+        <div class="flex-1">
+          <h2>My Library</h2>
+          <div class="sub">${me.name} · <code>${me.id}</code> · Card <code>${cardNum}</code></div>
+          <div class="row mt-12" style="flex-wrap:wrap;gap:6px">
+            <span class="badge info">Member since ${new Date(memberSince).toLocaleDateString('en-GB',{month:'short',year:'numeric'})}</span>
+            <span class="badge ${myActiveLoans.length?'success':'muted'}">${myActiveLoans.length} active loans</span>
+            <span class="badge ${overdueCount?'danger':'muted'}">${overdueCount} overdue</span>
+            <span class="badge ${myHolds.length?'warn':'muted'}">${myHolds.length} holds</span>
+            <span class="badge ${unpaidTotal>0?'danger':'muted'}">₼${unpaidTotal.toFixed(2)} unpaid fines</span>
+          </div>
+        </div>
+        <div class="row">
+          <a class="btn ghost" href="/static-mockups/library/catalog.html">Browse catalogue</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid kpi mt-16">
+      <div class="card kpi-card"><div class="label">Currently borrowed</div><div class="value">${myActiveLoans.length}</div><div class="delta">${myActiveLoans.length?'On loan':'No loans'}</div></div>
+      <div class="card kpi-card"><div class="label">Overdue</div><div class="value">${overdueCount}</div><div class="delta">${overdueCount?'Please return':'All good'}</div></div>
+      <div class="card kpi-card"><div class="label">Holds</div><div class="value">${myHolds.length}</div><div class="delta">${myHolds.filter(h=>h.status==='Ready for pickup').length} ready</div></div>
+      <div class="card kpi-card"><div class="label">Unpaid fines</div><div class="value">₼${unpaidTotal.toFixed(2)}</div><div class="delta">${unpaidTotal>0?'Settle at desk':'Clean record'}</div></div>
+    </div>
+
+    <div class="lib-grid mt-16">
+      <div class="card">
+        <div class="tabs" id="tabs-bar"></div>
+        <div id="tabs-body" class="mt-12"></div>
+      </div>
+      <div>
+        <div class="card">
+          <h2>🤖 Suggested for you</h2>
+          <p class="text-muted text-sm">Picked for your Computer Science programme.</p>
+          ${suggested.map(b => `
+            <div class="row" style="gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--border)">
+              <div style="font-size:28px">${b.cover}</div>
+              <div class="flex-1">
+                <div style="font-weight:600;font-size:13px;line-height:1.25">${b.title}</div>
+                <div class="text-muted text-sm">${b.authors}</div>
+              </div>
+              <button class="btn btn-sm primary" onclick="alert('Reservation placed for ${b.title.replace(/'/g,'')} (stub)')">Reserve</button>
+            </div>`).join('')}
+        </div>
+        <div class="card mt-16">
+          <h2>Quick links</h2>
+          <div class="row" style="flex-wrap:wrap;gap:6px">
+            <a class="btn btn-sm" href="/static-mockups/library/catalog.html">🔍 Catalogue</a>
+            <a class="btn btn-sm" href="/static-mockups/student/profile.html">🎓 Profile</a>
+            <a class="btn btn-sm" href="/static-mockups/student/payments.html">💳 Pay fines</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  `);
+
+  renderTabs();
+</script>
+</body></html>
