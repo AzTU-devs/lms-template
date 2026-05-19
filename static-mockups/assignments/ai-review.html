@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Assignment Review — UniFlow</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static-mockups/assets/css/styles.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head><body>
+<script src="/static-mockups/assets/js/mock-data.js"></script>
+<script src="/static-mockups/assets/js/app.js"></script>
+<script>
+  UniFlow.renderShell({ title: 'AI Assignment Review' });
+
+  const isPriv = UniFlow.ROLE === 'Teacher' || UniFlow.ROLE === 'Admin';
+  const state = { subject: 'Algorithms' };
+
+  const criteria = [
+    { name: 'Correctness', score: 90 },
+    { name: 'Clarity', score: 82 },
+    { name: 'Depth', score: 80 },
+    { name: 'References', score: 88 },
+  ];
+
+  const bar = (c) => {
+    const color = c.score >= 85 ? '#22c55e' : c.score >= 70 ? '#1A5AD7' : '#f59e0b';
+    return `
+      <div style="margin:10px 0">
+        <div class="row between" style="margin-bottom:4px"><span class="text-sm">${c.name}</span><strong class="text-sm">${c.score}</strong></div>
+        <div style="background:#e2e8f0;height:8px;border-radius:6px;overflow:hidden">
+          <div style="width:${c.score}%;height:100%;background:${color};border-radius:6px"></div>
+        </div>
+      </div>
+    `;
+  };
+
+  const teacherPanel = isPriv ? `
+    <div class="card mt-16" style="border-left:4px solid var(--primary)">
+      <div class="row between">
+        <div>
+          <h2 style="margin:0">Teacher override</h2>
+          <div class="text-muted text-sm">Adjust the AI score. Both AI and teacher scores remain logged for full transparency.</div>
+        </div>
+        <span class="badge info">${UniFlow.ROLE} mode</span>
+      </div>
+      <div class="grid two mt-12">
+        <div class="field"><label>Adjusted score (0–100)</label><input type="number" min="0" max="100" value="88"></div>
+        <div class="field"><label>Visible to student</label>
+          <select><option>Yes — release immediately</option><option>No — hold for review</option></select>
+        </div>
+      </div>
+      <div class="field mt-12"><label>Reason for override</label>
+        <textarea rows="3" placeholder="Explain the adjustment so the student understands…">Bumped clarity score: solution was actually concise; AI penalized brevity.</textarea>
+      </div>
+      <div class="row mt-12" style="gap:8px">
+        <button class="btn ghost" onclick="alert('Revert to AI score stub')">Revert to AI score</button>
+        <button class="btn primary" onclick="alert('Override saved (stub). AI=86, Teacher=88 — both retained.')">Save override</button>
+      </div>
+    </div>
+  ` : '';
+
+  function render() {
+    UniFlow.setContent(`
+      <div class="grid two">
+        <div class="card">
+          <h2>Submit for AI grading</h2>
+          <div class="text-muted text-sm">Your submission is graded instantly. A teacher will review long-form answers within 48h.</div>
+          <form class="mt-12" onsubmit="event.preventDefault();alert('Submitted for AI grading (stub). Results will appear on the right.');">
+            <div class="field"><label>Subject</label>
+              <select required>${MOCK.subjects.map(s=>`<option ${s===state.subject?'selected':''}>${s}</option>`).join('')}</select>
+            </div>
+            <div class="field mt-12"><label>Assignment title</label>
+              <input type="text" required placeholder="e.g. Dijkstra's shortest path — proof + impl." value="Graph traversal exercises">
+            </div>
+            <div class="field mt-12"><label>Your answer (text)</label>
+              <textarea rows="6" placeholder="Paste or type your written answer…">Breadth-first search explores neighbors level by level using a queue, while depth-first search dives along one path using a stack (or recursion). BFS finds shortest paths in unweighted graphs; DFS is better for topological sort and cycle detection…</textarea>
+            </div>
+            <div class="field mt-12"><label>Attachments</label>
+              <div style="border:2px dashed var(--border);border-radius:10px;padding:18px;text-align:center;background:#f8fafc">
+                <div style="font-size:28px">📎</div>
+                <div class="text-sm">Drop files or <a href="#" onclick="event.preventDefault();alert('File picker stub')">browse</a></div>
+                <div class="text-muted text-sm">PDF, .ipynb, .py, .docx · max 25MB</div>
+              </div>
+            </div>
+            <div class="row mt-16" style="gap:8px">
+              <button type="reset" class="btn ghost">Clear</button>
+              <button type="submit" class="btn primary">Submit for AI grading</button>
+            </div>
+          </form>
+        </div>
+
+        <div>
+          <div class="card">
+            <div class="row between">
+              <h2 style="margin:0">Last AI grade</h2>
+              <span class="badge success">Auto-graded · 2h ago</span>
+            </div>
+            <div class="text-muted text-sm">Algorithms · Graph traversal exercises</div>
+
+            <div class="row" style="align-items:center;gap:20px;margin-top:12px">
+              <div style="font-size:56px;font-weight:700;color:var(--primary);line-height:1">86</div>
+              <div style="flex:1">
+                <div class="text-sm text-muted">Overall</div>
+                <div style="background:#e2e8f0;height:10px;border-radius:6px;overflow:hidden;margin-top:4px">
+                  <div style="width:86%;height:100%;background:linear-gradient(90deg,#1A5AD7,#3b78ea);border-radius:6px"></div>
+                </div>
+                <div class="text-sm text-muted mt-12">Confidence: high · Tokens analyzed: 1,284</div>
+              </div>
+            </div>
+
+            <h3 style="margin:16px 0 4px;font-size:14px">Criteria breakdown</h3>
+            ${criteria.map(bar).join('')}
+
+            <h3 style="margin:16px 0 4px;font-size:14px">Written feedback</h3>
+            <div class="text-sm" style="background:#f8fafc;border-left:3px solid var(--primary);padding:10px 12px;border-radius:6px">
+              Strong grasp of the BFS/DFS distinction with accurate traversal-order examples.
+              Your complexity analysis is correct, but the discussion of edge cases (disconnected
+              graphs, weighted variants) could go deeper. Consider citing the original CLRS chapter
+              and adding one diagram for clarity.
+            </div>
+
+            <h3 style="margin:16px 0 4px;font-size:14px">Suggested improvements</h3>
+            <ul class="text-sm" style="margin:0;padding-left:18px">
+              <li>Add a worked example showing BFS on a disconnected graph.</li>
+              <li>Reference CLRS §22 to ground the complexity argument.</li>
+              <li>Include a complexity comparison table (best/avg/worst).</li>
+            </ul>
+          </div>
+
+          <div class="card mt-16" style="border-left:4px solid var(--warn);background:#fffbeb">
+            <h3 style="margin:0 0 4px;font-size:14px">🛡️ AI safety</h3>
+            <div class="text-sm">
+              Submissions are rate-limited (10/hour per student) and screened by prompt-injection guards
+              before reaching the model. Prompts and outputs are logged for audit.
+              <em>This is a stub — endpoints return canned data; no model is called.</em>
+            </div>
+          </div>
+
+          ${teacherPanel}
+        </div>
+      </div>
+
+      <div class="card mt-16">
+        <div class="row between">
+          <div>
+            <h2 style="margin:0">Improvement tracker</h2>
+            <div class="text-muted text-sm">Both AI and teacher scores are plotted so any override is fully transparent.</div>
+          </div>
+          <div class="filters">
+            <select id="subj-filter">
+              ${[...new Set(MOCK.aiSubmissions.map(s => s.subject))].map(s => `<option ${s===state.subject?'selected':''}>${s}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="chart-wrap mt-12"><canvas id="tracker"></canvas></div>
+      </div>
+    `);
+
+    document.getElementById('subj-filter').addEventListener('change', (e) => {
+      state.subject = e.target.value;
+      render();
+    });
+
+    drawTracker();
+  }
+
+  function drawTracker() {
+    const rows = MOCK.aiSubmissions
+      .filter(s => s.subject === state.subject)
+      .sort((a,b) => new Date(a.when) - new Date(b.when));
+    new Chart(document.getElementById('tracker'), {
+      type: 'line',
+      data: {
+        labels: rows.map(r => UniFlow.fmt.date(r.when)),
+        datasets: [
+          {
+            label: 'AI score',
+            data: rows.map(r => r.aiScore),
+            borderColor: '#1A5AD7',
+            backgroundColor: 'rgba(26,90,215,0.15)',
+            fill: true, tension: 0.3, borderWidth: 2, pointRadius: 4,
+          },
+          {
+            label: 'Teacher score',
+            data: rows.map(r => r.teacherScore),
+            borderColor: '#22c55e',
+            backgroundColor: 'rgba(34,197,94,0.1)',
+            fill: false, tension: 0.3, borderWidth: 2, pointRadius: 4, borderDash: [6,4],
+          },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom' } },
+        scales: { y: { suggestedMin: 50, suggestedMax: 100 } },
+      },
+    });
+  }
+
+  render();
+</script>
+</body></html>

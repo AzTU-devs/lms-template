@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Exams — UniFlow</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static-mockups/assets/css/styles.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head><body>
+<script src="/static-mockups/assets/js/mock-data.js"></script>
+<script src="/static-mockups/assets/js/app.js"></script>
+<script>
+  UniFlow.renderShell({ title: 'Exams' });
+
+  const upcoming = [
+    { id: 'X-601', subject: 'Algorithms', date: new Date(Date.now() + 3*86400000).toISOString(), type: 'online', max: 100 },
+    { id: 'X-602', subject: 'Operating Systems', date: new Date(Date.now() + 9*86400000).toISOString(), type: 'paper', max: 100 },
+    { id: 'X-603', subject: 'Academic English', date: new Date(Date.now() + 14*86400000).toISOString(), type: 'online', max: 100 },
+  ];
+  const past = MOCK.exams;
+  const avg = Math.round(past.reduce((a,b)=>a+b.score,0) / past.length);
+  const gradeBadge = (g) => {
+    if (g.startsWith('A')) return `<span class="badge success">${g}</span>`;
+    if (g.startsWith('B')) return `<span class="badge info">${g}</span>`;
+    if (g.startsWith('C')) return `<span class="badge warn">${g}</span>`;
+    return `<span class="badge danger">${g}</span>`;
+  };
+  const typeBadge = (t) => t === 'online'
+    ? '<span class="badge info">Computer-based</span>'
+    : '<span class="badge muted">Paper</span>';
+
+  UniFlow.setContent(`
+    <div class="grid two">
+      <div class="card" style="background:linear-gradient(135deg, #1A5AD7 0%, #3b78ea 100%); color:#fff">
+        <div style="font-size:38px;line-height:1">💻</div>
+        <h2 style="color:#fff;margin-top:8px">Computer-Based Exam</h2>
+        <p style="color:rgba(255,255,255,.85);margin:8px 0 16px">
+          Take a proctored online exam from your browser. Fullscreen, tab-switch detection,
+          and timer all enforced. Auto-graded MCQs and instant feedback after submission.
+        </p>
+        <ul style="color:rgba(255,255,255,.9);padding-left:18px;margin:0 0 18px">
+          <li>Adaptive question flow</li>
+          <li>Per-question time tracking</li>
+          <li>Plagiarism &amp; AI-content checks</li>
+        </ul>
+        <a href="/static-mockups/exams/online.html" class="btn" style="background:#fff;color:var(--primary);font-weight:600">Start an exam →</a>
+      </div>
+
+      <div class="card">
+        <div style="font-size:38px;line-height:1">📄</div>
+        <h2 style="margin-top:8px">Paper-Based Exam Results</h2>
+        <p class="text-muted" style="margin:8px 0 16px">
+          Browse digitized results from in-person paper exams. Download an official
+          transcript, review your GPA trend, and (for teachers) bulk-upload scores via CSV.
+        </p>
+        <div class="row" style="gap:12px;flex-wrap:wrap">
+          <span class="badge muted">Verified by Registrar</span>
+          <span class="badge muted">PDF transcripts</span>
+          <span class="badge muted">CSV import</span>
+        </div>
+        <div class="mt-16">
+          <a href="/static-mockups/exams/paper.html" class="btn primary">View paper results →</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid kpi mt-16">
+      <div class="card kpi-card"><div class="label">Upcoming exams</div><div class="value">${upcoming.length}</div><div class="delta">Next: ${upcoming[0].subject}</div></div>
+      <div class="card kpi-card"><div class="label">Past exams</div><div class="value">${past.length}</div><div class="delta">This academic year</div></div>
+      <div class="card kpi-card"><div class="label">Average score</div><div class="value">${avg}</div><div class="delta up">+3 vs last term</div></div>
+      <div class="card kpi-card">
+        <div class="label">GPA trend</div>
+        <div class="value">3.62</div>
+        <div style="height:32px"><canvas id="gpa-spark"></canvas></div>
+      </div>
+    </div>
+
+    <div class="card mt-16">
+      <div class="row between">
+        <h2>Upcoming exams</h2>
+        <div class="row" style="gap:8px">
+          <button class="btn btn-sm ghost" onclick="alert('Calendar export stub')">Export to calendar</button>
+          <button class="btn btn-sm" onclick="alert('Filter stub')">Filter</button>
+        </div>
+      </div>
+      <div class="table-wrap mt-12">
+        <table class="data">
+          <thead><tr><th>Subject</th><th>Date</th><th>Type</th><th>Max</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            ${upcoming.map(e => `
+              <tr>
+                <td><strong>${e.subject}</strong></td>
+                <td>${UniFlow.fmt.date(e.date)}</td>
+                <td>${typeBadge(e.type)}</td>
+                <td>${e.max}</td>
+                <td><span class="badge warn">in ${UniFlow.fmt.daysUntil(e.date)}d</span></td>
+                <td><a class="btn btn-sm primary" href="/static-mockups/exams/${e.type === 'online' ? 'online.html' : 'paper.html'}">${e.type === 'online' ? 'Start' : 'Details'}</a></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card mt-16">
+      <div class="row between">
+        <h2>Past exams</h2>
+        <div class="filters">
+          <select><option>All subjects</option>${MOCK.subjects.map(s=>`<option>${s}</option>`).join('')}</select>
+          <select><option>All types</option><option>Computer-based</option><option>Paper</option></select>
+        </div>
+      </div>
+      <div class="table-wrap mt-12">
+        <table class="data">
+          <thead><tr><th>Subject</th><th>Date</th><th>Type</th><th>Marks</th><th>Grade</th><th></th></tr></thead>
+          <tbody>
+            ${past.map(e => `
+              <tr>
+                <td><strong>${e.subject}</strong></td>
+                <td>${UniFlow.fmt.date(e.date)}</td>
+                <td>${typeBadge(e.type)}</td>
+                <td>${e.score} / ${e.max}</td>
+                <td>${gradeBadge(e.grade)}</td>
+                <td><button class="btn btn-sm ghost" onclick="alert('Detail view stub')">View</button></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `);
+
+  // GPA sparkline
+  const sparkCtx = document.getElementById('gpa-spark').getContext('2d');
+  new Chart(sparkCtx, {
+    type: 'line',
+    data: {
+      labels: ['', '', '', '', '', ''],
+      datasets: [{
+        data: [3.41, 3.48, 3.52, 3.55, 3.59, 3.62],
+        borderColor: '#1A5AD7',
+        backgroundColor: 'rgba(26,90,215,0.15)',
+        fill: true, tension: 0.35, pointRadius: 0, borderWidth: 2,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      scales: { x: { display: false }, y: { display: false } },
+    },
+  });
+</script>
+</body></html>

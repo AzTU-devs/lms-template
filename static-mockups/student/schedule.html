@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Schedule — UniFlow</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static-mockups/assets/css/styles.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  .month-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+  .month-grid .mh { font-size: 11px; font-weight: 600; color: var(--muted); text-align: center; padding: 4px; }
+  .month-grid .md { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; min-height: 64px; padding: 6px; font-size: 12px; position: relative; }
+  .month-grid .md.muted { background: var(--bg); color: var(--muted); }
+  .month-grid .md .dots { position: absolute; bottom: 6px; left: 6px; display: flex; gap: 3px; }
+  .month-grid .md .dot { width: 6px; height: 6px; border-radius: 50%; }
+  .today-list li { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px dashed var(--border); font-size: 13px; }
+  .today-list li:last-child { border-bottom: none; }
+  .legend-sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: middle; }
+</style>
+</head><body>
+<script src="/static-mockups/assets/js/mock-data.js"></script>
+<script src="/static-mockups/assets/js/app.js"></script>
+<script>
+  const isTeacher = UniFlow.ROLE === 'Teacher';
+  UniFlow.renderShell({ title: isTeacher ? 'Teaching Schedule' : 'My Schedule' });
+
+  const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const hours = [];
+  for (let h = 8; h <= 18; h++) hours.push((h<10?'0':'')+h+':00');
+
+  // Group events by day+hour
+  const eventsAt = {};
+  MOCK.schedule.forEach(e => {
+    const h = e.start.split(':')[0] + ':00';
+    const key = e.day + '|' + h;
+    (eventsAt[key] = eventsAt[key] || []).push(e);
+  });
+
+  const todayName = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date().getDay()];
+  const todayItems = MOCK.schedule.filter(e => e.day === todayName);
+
+  function evBlock(e) {
+    const cls = e.color === 1 ? '' : 's' + e.color;
+    return `<div class="ev ${cls}">
+      <strong>${e.subject}</strong><br>
+      ${e.start}–${e.end}<br>
+      ${isTeacher ? 'Group CS-2A' : e.teacher}<br>
+      <span style="opacity:.8">${e.room} · ${e.building}</span>
+    </div>`;
+  }
+
+  // Build month grid: current month
+  const now = new Date();
+  const year = now.getFullYear(), month = now.getMonth();
+  const firstDow = (new Date(year, month, 1).getDay() + 6) % 7; // Monday-first
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const dayHasEvent = new Set();
+  // Map days names with events
+  const daysWithEvents = new Set(MOCK.schedule.map(s => s.day));
+  let monthCells = '';
+  for (let i = 0; i < firstDow; i++) monthCells += `<div class="md muted"></div>`;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dow = new Date(year, month, d).getDay();
+    const name = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dow];
+    const events = MOCK.schedule.filter(s => s.day === name);
+    const dots = events.slice(0,4).map(e => `<span class="dot" style="background:${['#1A5AD7','#F0A500','#22C55E','#E25555'][e.color-1]}"></span>`).join('');
+    monthCells += `<div class="md"><div>${d}</div>${dots?`<div class="dots">${dots}</div>`:''}</div>`;
+  }
+
+  const weekHtml = `
+    <div class="cal">
+      <div class="h"></div>
+      ${days.map(d => `<div class="h">${d}${d===todayName?' • Today':''}</div>`).join('')}
+      ${hours.map(h => `
+        <div class="h">${h}</div>
+        ${days.map(d => {
+          const evs = eventsAt[d+'|'+h] || [];
+          return `<div class="slot">${evs.map(evBlock).join('')}</div>`;
+        }).join('')}
+      `).join('')}
+    </div>`;
+
+  const monthHtml = `
+    <div class="month-grid">
+      ${days.map(d => `<div class="mh">${d}</div>`).join('')}
+      ${monthCells}
+    </div>
+    <p class="text-muted text-sm mt-12">Dots indicate days that have lectures or labs scheduled.</p>
+  `;
+
+  UniFlow.setContent(`
+    <div class="row between">
+      <div class="tabs" style="border-bottom:none;margin-bottom:0">
+        <button class="active" id="tab-week">Week</button>
+        <button id="tab-month">Month</button>
+      </div>
+      <div class="row">
+        <button class="btn ghost btn-sm">‹ Prev</button>
+        <button class="btn ghost btn-sm">Today</button>
+        <button class="btn ghost btn-sm">Next ›</button>
+      </div>
+    </div>
+
+    <div class="grid two mt-16" style="grid-template-columns: 2fr 1fr">
+      <div class="card">
+        <div class="row between">
+          <h2>Today (${todayName})</h2>
+          <span class="badge info">${todayItems.length} class${todayItems.length===1?'':'es'}</span>
+        </div>
+        ${todayItems.length ? `<ul class="today-list" style="list-style:none;padding:0;margin:0">
+          ${todayItems.map(t => `<li>
+            <div><strong>${t.subject}</strong> <span class="text-muted text-sm">· ${t.teacher}</span></div>
+            <div class="text-sm">${t.start}–${t.end} · ${t.room}</div>
+          </li>`).join('')}
+        </ul>` : `<div class="empty"><div class="emoji">🎉</div>No classes today. Enjoy the day!</div>`}
+      </div>
+
+      <div class="card">
+        <h2>Export</h2>
+        <p class="text-muted text-sm">Sync your timetable to your favourite calendar app.</p>
+        <div class="row" style="flex-direction:column;align-items:stretch;gap:8px" class="mt-12">
+          <button class="btn primary" onclick="alert('Redirecting to Google Calendar OAuth (stub)…')">📅 Add to Google Calendar</button>
+          <button class="btn ghost" onclick="alert('Downloaded uniflow-schedule.ics (stub)')">⬇ Download iCal (.ics)</button>
+          <button class="btn ghost" onclick="alert('Subscribe URL copied to clipboard (stub)')">🔗 Copy subscribe URL</button>
+        </div>
+        <div class="mt-16">
+          <div class="text-sm text-muted">Legend</div>
+          <div class="text-sm mt-12">
+            <div><span class="legend-sw" style="background:#1A5AD7"></span>Core lectures</div>
+            <div><span class="legend-sw" style="background:#F0A500"></span>Labs</div>
+            <div><span class="legend-sw" style="background:#22C55E"></span>Electives</div>
+            <div><span class="legend-sw" style="background:#E25555"></span>Seminars</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mt-16">
+      <div class="row between">
+        <h2 id="view-title">Week of ${UniFlow.fmt.date(new Date())}</h2>
+        <span class="badge muted">${isTeacher ? 'Teaching load: 14h/week' : '24 contact hours/week'}</span>
+      </div>
+      <div id="view-body" class="mt-12">${weekHtml}</div>
+    </div>
+  `);
+
+  const weekHtmlStored = weekHtml;
+  const monthHtmlStored = monthHtml;
+  document.getElementById('tab-week').addEventListener('click', () => {
+    document.getElementById('tab-week').classList.add('active');
+    document.getElementById('tab-month').classList.remove('active');
+    document.getElementById('view-body').innerHTML = weekHtmlStored;
+    document.getElementById('view-title').textContent = 'Week of ' + UniFlow.fmt.date(new Date());
+  });
+  document.getElementById('tab-month').addEventListener('click', () => {
+    document.getElementById('tab-month').classList.add('active');
+    document.getElementById('tab-week').classList.remove('active');
+    document.getElementById('view-body').innerHTML = monthHtmlStored;
+    document.getElementById('view-title').textContent = new Date().toLocaleString('en-GB', { month: 'long', year: 'numeric' });
+  });
+</script>
+</body></html>

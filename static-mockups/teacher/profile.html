@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>My Profile — UniFlow</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static-mockups/assets/css/styles.css">
+<style>
+  .card-flip { perspective: 1200px; }
+  .card-flip .inner { position: relative; transition: transform .6s; transform-style: preserve-3d; }
+  .card-flip.flipped .inner { transform: rotateY(180deg); }
+  .card-flip .face { backface-visibility: hidden; }
+  .card-flip .face.back { position: absolute; inset: 0; transform: rotateY(180deg); }
+</style>
+</head><body>
+<script src="/static-mockups/assets/js/mock-data.js"></script>
+<script src="/static-mockups/assets/js/app.js"></script>
+<script>
+  UniFlow.renderShell({ title: 'My Profile' });
+
+  const me = MOCK.employees[0]; // Dr. Samir Bayramov
+  const initials = me.name.replace(/^Dr\.\s*/, '').split(' ').map(p => p[0]).join('').slice(0,2);
+  const cardId = me.id + '-' + new Date().getFullYear();
+  const validUntil = new Date(); validUntil.setFullYear(validUntil.getFullYear() + 3);
+  const qrData = encodeURIComponent('UNIFLOW|FACULTY|' + me.id + '|' + cardId);
+  const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=160x160&margin=0&data=' + qrData;
+
+  const courses = ['Algorithms (CS-2A, CS-2B)', 'Operating Systems (CS-3A)', 'Advanced Data Structures (MSc)'];
+  const officeHours = [
+    { d: 'Mon', h: '14:00 – 16:00' },
+    { d: 'Wed', h: '11:00 – 12:30' },
+    { d: 'Fri', h: '15:00 – 16:30' },
+  ];
+
+  const docs = [
+    { ic: '📜', name: 'Employment contract', sub: 'PDF · 240 KB · Full-time, indefinite', secure: true },
+    { ic: '🪪', name: 'National ID copy', sub: 'PDF · 0.5 MB', secure: true },
+    { ic: '🎓', name: 'PhD diploma — TU Munich', sub: 'PDF · 1.4 MB · verified', secure: true },
+    { ic: '📄', name: 'Tax declaration (2025)', sub: 'PDF · 80 KB', secure: true },
+    { ic: '🩺', name: 'Medical clearance', sub: 'PDF · 320 KB · expires 2027-04-12', secure: true },
+    { ic: '🏆', name: 'Letter of appointment — Head of Lab', sub: 'PDF · 60 KB', secure: true },
+    { ic: '🧾', name: 'Latest payslip (Oct 2025)', sub: 'PDF · 50 KB · Net ₼3,820', secure: true },
+    { ic: '📊', name: 'Annual performance review', sub: 'PDF · 180 KB · rating: Exceeds expectations', secure: true },
+    { ic: '🛂', name: 'Visa / residence permit', sub: 'PDF · 220 KB · valid until 2028', secure: true },
+  ];
+
+  UniFlow.setContent(`
+    <div class="card">
+      <div class="profile-head">
+        <div class="avatar-lg" style="background:#FEF3C7;color:#92400E">${initials}</div>
+        <div class="flex-1">
+          <h2>${me.name}</h2>
+          <div class="sub">${me.role} · ${me.dept} · <code>${me.id}</code></div>
+          <div class="row mt-12">
+            <span class="badge success">${me.status}</span>
+            <span class="badge info">Salary band ${me.salaryBand}</span>
+            <span class="badge muted">Leave balance: ${me.leaveBalance}d</span>
+            <span class="badge warn">Head of Algorithms Lab</span>
+          </div>
+        </div>
+        <div class="row">
+          <button class="btn ghost" onclick="alert('Edit profile (stub)')">Edit</button>
+          <button class="btn primary" onclick="window.print()">Print</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="profile-grid mt-16">
+      <div>
+        <div class="card">
+          <h2>Personal information</h2>
+          <div class="info-row"><div class="k">Full name</div><div>${me.name}</div></div>
+          <div class="info-row"><div class="k">Employee ID</div><div><code>${me.id}</code></div></div>
+          <div class="info-row"><div class="k">Date of birth</div><div>22 August 1978</div></div>
+          <div class="info-row"><div class="k">National ID</div><div>AZE-•••• 7811</div></div>
+          <div class="info-row"><div class="k">Email</div><div>${me.email}</div></div>
+          <div class="info-row"><div class="k">Phone</div><div>+994 50 ••• 44 17</div></div>
+          <div class="info-row"><div class="k">Office</div><div>Block A · Room 312</div></div>
+          <div class="info-row"><div class="k">Emergency contact</div><div>Bayramova Aysel · +994 55 ••• 22 09</div></div>
+        </div>
+
+        <div class="card mt-16">
+          <h2>Employment</h2>
+          <div class="info-row"><div class="k">Position</div><div>${me.role}, Head of Algorithms Lab</div></div>
+          <div class="info-row"><div class="k">Department</div><div>${me.dept}</div></div>
+          <div class="info-row"><div class="k">Faculty</div><div>Engineering &amp; Applied Sciences</div></div>
+          <div class="info-row"><div class="k">Joined</div><div>1 September 2014</div></div>
+          <div class="info-row"><div class="k">Contract type</div><div>Full-time, indefinite</div></div>
+          <div class="info-row"><div class="k">Salary band</div><div>${me.salaryBand} — Gross ₼5,200 / Net ₼3,820</div></div>
+          <div class="info-row"><div class="k">Leave balance</div><div>${me.leaveBalance} days remaining (annual)</div></div>
+          <div class="info-row"><div class="k">Reports to</div><div>Prof. Leyla Nasibova (Dean of Engineering)</div></div>
+        </div>
+
+        <div class="card mt-16">
+          <h2>Teaching this term</h2>
+          <ul style="margin:0;padding-left:18px">
+            ${courses.map(c => `<li style="padding:4px 0">${c}</li>`).join('')}
+          </ul>
+          <h3 class="mt-16">Office hours</h3>
+          <div class="row" style="flex-wrap:wrap;gap:10px;margin-top:8px">
+            ${officeHours.map(o => `<div class="badge info" style="padding:6px 12px"><strong>${o.d}</strong> · ${o.h}</div>`).join('')}
+          </div>
+          <div class="row mt-12">
+            <a class="btn btn-sm" href="/static-mockups/student/schedule.html">📅 Teaching schedule</a>
+            <a class="btn btn-sm" href="/static-mockups/homework/index.html">📝 My homework feed</a>
+            <a class="btn btn-sm" href="/static-mockups/admin/attendance.html">✅ Class attendance</a>
+          </div>
+        </div>
+
+        <div class="card mt-16">
+          <h2>Documents</h2>
+          <p class="text-muted text-sm" style="margin-bottom:12px">HR-managed documents. Secured items require re-authentication to download. HR Admin may view all; you can only see your own.</p>
+          <div class="docs-list">
+            ${docs.map(d => `<div class="doc-row">
+              <div class="ic">${d.ic}</div>
+              <div class="main"><strong>${d.name}</strong><div class="sub">${d.sub}</div></div>
+              ${d.secure ? '<span class="badge muted">🔒 Secured</span>' : ''}
+              <button class="btn ghost btn-sm" onclick="alert('Preview ${d.name.replace(/'/g, '')} (stub)')">Preview</button>
+              <button class="btn btn-sm" onclick="alert('Download ${d.name.replace(/'/g, '')} (stub)')">Download</button>
+            </div>`).join('')}
+          </div>
+          <div class="row end mt-12">
+            <button class="btn ghost btn-sm" onclick="alert('Request HR document (stub)')">Request from HR</button>
+            <button class="btn btn-sm" onclick="alert('Upload document (stub)')">Upload</button>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="card">
+          <div class="row between">
+            <h2>Digital Faculty Card</h2>
+            <button class="btn ghost btn-sm" onclick="document.getElementById('flip').classList.toggle('flipped')">↻ Flip</button>
+          </div>
+
+          <div id="flip" class="card-flip mt-12" style="max-width:360px;margin:0 auto">
+            <div class="inner" style="aspect-ratio:1.586/1">
+              <div class="id-card teacher face">
+                <div class="holo"></div>
+                <div class="role-tag">Faculty</div>
+                <div class="uni"><div class="mark">U</div> UniFlow University</div>
+                <div class="body">
+                  <div class="photo">${initials}</div>
+                  <div>
+                    <div class="name">${me.name}</div>
+                    <div class="meta">
+                      <div>${me.role}</div>
+                      <div>${me.dept}</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="footer">
+                  <div>
+                    <div style="opacity:.8">EMP ID</div>
+                    <div style="font-weight:700"><code style="color:#fff">${me.id}</code></div>
+                    <div style="margin-top:4px;opacity:.8">Valid until ${validUntil.toLocaleDateString('en-GB',{month:'short',year:'numeric'})}</div>
+                  </div>
+                  <div class="qr"><img src="${qrUrl}" alt="QR"></div>
+                </div>
+              </div>
+              <div class="id-card back face">
+                <div class="strip"></div>
+                <div style="margin-top:78px">
+                  <div class="small"><strong>Card #</strong> ${cardId}</div>
+                  <div class="small"><strong>Issued</strong> ${new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}</div>
+                  <div class="small"><strong>Access</strong> Block A, Block B, Lab L-7, Server room</div>
+                  <div class="small" style="margin-top:8px">If found, please return to:<br><strong>UniFlow University, HR Office</strong><br>16 Azadliq Ave, Baku · +994 12 345 67 89</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="row mt-16">
+            <button class="btn primary flex-1" onclick="alert('Added to Apple Wallet (stub)')">📲 Add to Wallet</button>
+            <button class="btn flex-1" onclick="alert('PDF downloaded (stub)')">⬇️ PDF</button>
+          </div>
+          <p class="text-muted text-sm mt-12" style="text-align:center">QR encodes <code>${decodeURIComponent(qrData)}</code>. This card also unlocks Block A turnstiles and the staff parking gate.</p>
+        </div>
+
+        <div class="card mt-16">
+          <h2>Quick actions</h2>
+          <div class="row" style="flex-wrap:wrap;gap:8px">
+            <a class="btn btn-sm" href="/static-mockups/homework/index.html">📝 Assignments</a>
+            <a class="btn btn-sm" href="/static-mockups/exams/index.html">🧪 Exams</a>
+            <a class="btn btn-sm" href="/static-mockups/assignments/ai-review.html">🤖 AI Grading</a>
+            <a class="btn btn-sm" href="/static-mockups/admin/attendance.html">✅ Attendance</a>
+          </div>
+        </div>
+
+        <div class="card mt-16">
+          <h2>Login &amp; security</h2>
+          <div class="info-row"><div class="k">Last sign-in</div><div>${new Date().toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})} · web</div></div>
+          <div class="info-row"><div class="k">2FA</div><div><span class="badge success">Enabled</span> Hardware key</div></div>
+          <div class="info-row"><div class="k">Roles</div><div>Teacher, Lab Head</div></div>
+          <div class="info-row"><div class="k">Devices</div><div>3 active sessions</div></div>
+          <button class="btn ghost btn-sm mt-12" onclick="alert('Open security settings (stub)')">Manage</button>
+        </div>
+      </div>
+    </div>
+  `);
+</script>
+</body></html>

@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Attendance — Live Roster — UniFlow</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static-mockups/assets/css/styles.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  .feed { max-height: 320px; overflow-y: auto; }
+  .feed-item { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px dashed var(--border); font-size: 13px; align-items: center; }
+  .feed-item:last-child { border-bottom: none; }
+  .feed-item .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .live-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--success); }
+  .live-pill .blip { width: 8px; height: 8px; border-radius: 50%; background: var(--success); animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+  .dir-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  .dir-pill.enter { background: #DCFCE7; color: #166534; }
+  .dir-pill.exit  { background: #FEE2E2; color: #991B1B; }
+  .person-pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; background: var(--primary-soft); color: var(--primary); }
+  .person-pill.teacher { background: #FEF3C7; color: #92400E; }
+</style>
+</head><body>
+<script src="/static-mockups/assets/js/mock-data.js"></script>
+<script src="/static-mockups/assets/js/app.js"></script>
+<script>
+  UniFlow.renderShell({ title: 'Attendance — Live Roster' });
+
+  // Synthesize a roster of 32 enrolled (use MOCK.students + filler)
+  const fillerNames = ['Sevda Hasanli','Kamil Asadov','Nigar Rzayeva','Anar Quliyev','Lala Mammadova','Tural Eyvazov','Aybeniz Karimli','Murad Pashayev','Rena Hajiyeva','Elvin Mehdiyev','Aysel Babayeva','Farid Suleymanov','Gulnar Aliyeva','Ramin Zeynalov','Ulker Mammadli','Sabina Rahimli','Vusal Quliyev','Aytaj Mursalova','Elnur Aghayev','Lale Bayramli','Tamerlan Ismayilov','Aygun Veliyeva','Orkhan Hasanov','Sahil Karim','Narmin Babayeva','Javid Nuriyev'];
+  const all = [...MOCK.students, ...fillerNames.map((n,i) => ({ id: 'S-2'+(100+i), name: n, dept: 'Computer Science', year: 2, gpa: 3.4 }))].slice(0, 32);
+
+  // Random-but-stable statuses
+  let ci = 0, ab = 0, lt = 0;
+  const roster = all.map((s, i) => {
+    let status, time = '', gate = '';
+    if (i < 26) { status = 'Checked-in'; ci++; time = '09:0' + (i % 9); gate = 'Gate A'; }
+    else if (i < 28) { status = 'Late'; lt++; time = '09:' + (16 + i); gate = 'Gate B'; }
+    else { status = 'Absent'; ab++; }
+    return { ...s, status, time, gate };
+  });
+
+  function statusBadge(s) {
+    const map = { 'Checked-in': 'success', Late: 'warn', Absent: 'danger' };
+    return `<span class="badge ${map[s]}">${s}</span>`;
+  }
+
+  // Generate check-in feed
+  const feed = [];
+  for (let i = 0; i < 12; i++) {
+    const s = roster[i];
+    feed.push({ name: s.name, id: s.id, time: '09:0' + (i % 9) + ':' + ((i*7)%60).toString().padStart(2,'0'), gate: i%2?'Gate A':'Gate B', status: i>=10?'Late':'Checked-in' });
+  }
+
+  const subjectOptions = ['Algorithms — Mon 09:00 (A-204)', 'Linear Algebra — Mon 11:00 (B-110)', 'Operating Systems — Tue 10:00 (A-301)', 'Microeconomics — Wed 09:00 (C-12)'];
+
+  // ---- Gate Activity dataset (enter/exit for students + teachers) ----
+  const gateNames = ['Gate A (Main entrance)', 'Gate B (Sciences)', 'Gate C (Library)', 'Gate D (Dorm)'];
+  const teachers = MOCK.employees
+    .filter(e => /Prof|Lecturer|Lab/.test(e.role))
+    .map(e => ({ id: e.id, name: e.name, kind: 'Teacher', dept: e.dept }));
+  const studentPeople = all.map(s => ({ id: s.id, name: s.name, kind: 'Student', dept: s.dept }));
+  const everyone = [...teachers, ...studentPeople];
+
+  function pad(n) { return n.toString().padStart(2,'0'); }
+  function hhmm(d) { return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()); }
+  function dayStr(d) { return d.toISOString().slice(0,10); }
+
+  // Synthesize ~80 enter/exit events across today. Each person can enter, optionally exit later.
+  const gateEvents = [];
+  const now = new Date();
+  let seed = 1;
+  function rnd() { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; }
+  everyone.slice(0, 60).forEach((p, i) => {
+    const enterH = 7 + Math.floor(rnd() * 4);     // 07:00–10:59
+    const enterM = Math.floor(rnd() * 60);
+    const ent = new Date(now); ent.setHours(enterH, enterM, Math.floor(rnd()*60), 0);
+    const gate = gateNames[Math.floor(rnd() * gateNames.length)];
+    gateEvents.push({ id: 'EV-'+(1000+i)+'a', person: p, dir: 'Enter', time: ent, gate });
+    // 80% have an exit later in the day
+    if (rnd() < 0.8) {
+      const stayH = 1 + Math.floor(rnd() * 6); // 1–6 hrs
+      const ex = new Date(ent.getTime() + stayH * 3600 * 1000 + Math.floor(rnd()*3600*1000));
+      if (ex < now) gateEvents.push({ id: 'EV-'+(1000+i)+'b', person: p, dir: 'Exit', time: ex, gate });
+    }
+  });
+  gateEvents.sort((a,b) => b.time - a.time); // newest first
+
+  // Compute "currently on campus" = enter without matching later exit, for this day.
+  const onCampus = {};
+  [...gateEvents].reverse().forEach(e => {
+    if (e.dir === 'Enter') onCampus[e.person.id] = e.person;
+    else delete onCampus[e.person.id];
+  });
+  const onCampusList = Object.values(onCampus);
+  const onCampusStudents = onCampusList.filter(p => p.kind === 'Student').length;
+  const onCampusTeachers = onCampusList.filter(p => p.kind === 'Teacher').length;
+  const totalEnters = gateEvents.filter(e => e.dir === 'Enter').length;
+  const totalExits  = gateEvents.filter(e => e.dir === 'Exit').length;
+
+  function personPill(p) { return `<span class="person-pill ${p.kind === 'Teacher' ? 'teacher' : ''}">${p.kind}</span>`; }
+  function dirPill(d)    { return `<span class="dir-pill ${d.toLowerCase()}">${d === 'Enter' ? '→ Enter' : '← Exit'}</span>`; }
+
+  UniFlow.setContent(`
+    <div class="tabs">
+      <button class="active" data-view="lesson">Lesson Roster</button>
+      <button data-view="gate">Gate Activity (All)</button>
+    </div>
+
+    <div id="view-lesson">
+    <div class="card">
+      <div class="row between">
+        <h2>Lesson</h2>
+        <span class="live-pill"><span class="blip"></span>LIVE</span>
+      </div>
+      <div class="filters mt-12">
+        <div class="field flex-1"><label>Subject — Lesson</label><select>${subjectOptions.map(o => `<option>${o}</option>`).join('')}</select></div>
+        <div class="field"><label>Date</label><input type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+        <div class="field"><label>Teacher</label><select><option>Dr. Bayramov</option><option>A. Mehdiyeva</option></select></div>
+        <div class="field" style="align-self:end"><button class="btn primary" onclick="alert('Refreshed roster.')">↻ Refresh</button></div>
+      </div>
+    </div>
+
+    <div class="grid kpi mt-16">
+      <div class="card kpi-card"><div class="label">Checked-in</div><div class="value" style="color:var(--success)">${ci}</div><div class="delta up">${Math.round(ci/32*100)}% of class</div></div>
+      <div class="card kpi-card"><div class="label">Late</div><div class="value" style="color:var(--warn)">${lt}</div><div class="delta">after 09:15</div></div>
+      <div class="card kpi-card"><div class="label">Absent</div><div class="value" style="color:var(--danger)">${ab}</div><div class="delta down">flagged for follow-up</div></div>
+      <div class="card kpi-card"><div class="label">Total Enrolled</div><div class="value">32</div><div class="delta">CS-2A</div></div>
+    </div>
+
+    <div class="grid two mt-16" style="grid-template-columns: 2fr 1fr">
+      <div class="card">
+        <div class="row between">
+          <h2>Live Roster</h2>
+          <div class="row">
+            <button class="btn ghost btn-sm">Mark all absent</button>
+            <button class="btn ghost btn-sm">Export CSV</button>
+          </div>
+        </div>
+        <div class="table-wrap mt-12">
+          <table class="data">
+            <thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Time</th><th>Gate</th><th></th></tr></thead>
+            <tbody>
+              ${roster.map(r => `<tr>
+                <td><code>${r.id}</code></td>
+                <td>${r.name}</td>
+                <td>${statusBadge(r.status)}</td>
+                <td>${r.time || '—'}</td>
+                <td>${r.gate || '—'}</td>
+                <td><button class="btn ghost btn-sm" onclick="alert('Override status for ${r.name}')">Edit</button></td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div>
+        <div class="card">
+          <h2>Check-ins by Time</h2>
+          <div class="chart-wrap"><canvas id="ch-bucket"></canvas></div>
+        </div>
+        <div class="card mt-16">
+          <div class="row between"><h2>Turnstile Feed</h2><span class="live-pill"><span class="blip"></span>LIVE</span></div>
+          <div class="feed mt-12">
+            ${feed.map(f => `<div class="feed-item">
+              <span class="dot" style="background:${f.status==='Late'?'var(--warn)':'var(--success)'}"></span>
+              <div style="flex:1">
+                <div><strong>${f.name}</strong> <span class="text-muted text-sm">${f.id}</span></div>
+                <div class="text-sm text-muted">${f.gate} · ${f.time}</div>
+              </div>
+              ${statusBadge(f.status)}
+            </div>`).join('')}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mt-16">
+      <h2>Settings</h2>
+      <div class="filters mt-12">
+        <div class="field"><label>Late threshold (min after lesson start)</label><input type="number" value="15" min="0"></div>
+        <div class="field flex-1"><label>Webhook URL (turnstile devices)</label><input type="text" value="/api/turnstile/checkin" readonly></div>
+        <div class="field"><label>Auto-mark absent after</label><select><option>20 minutes</option><option selected>30 minutes</option><option>End of lesson</option></select></div>
+        <div class="field" style="align-self:end"><button class="btn primary">Save</button></div>
+      </div>
+      <p class="text-muted text-sm">Devices POST signed payloads to the webhook. Configure secrets in Admin → Integrations.</p>
+    </div>
+    </div>
+
+    <div id="view-gate" style="display:none">
+      <div class="card">
+        <div class="row between">
+          <h2>Gate Activity — Enter / Exit (Students & Teachers)</h2>
+          <span class="live-pill"><span class="blip"></span>LIVE</span>
+        </div>
+        <div class="filters mt-12">
+          <div class="field"><label>Date</label><input type="date" id="ga-date" value="${dayStr(now)}"></div>
+          <div class="field"><label>Person type</label>
+            <select id="ga-kind"><option value="all">All</option><option value="Student">Students</option><option value="Teacher">Teachers</option></select>
+          </div>
+          <div class="field"><label>Direction</label>
+            <select id="ga-dir"><option value="all">Both</option><option value="Enter">Enter only</option><option value="Exit">Exit only</option></select>
+          </div>
+          <div class="field"><label>Gate</label>
+            <select id="ga-gate"><option value="all">All gates</option>${gateNames.map(g => `<option>${g}</option>`).join('')}</select>
+          </div>
+          <div class="field flex-1"><label>Search name / ID</label><input type="search" id="ga-q" placeholder="e.g. Bayramov, S-1001"></div>
+          <div class="field" style="align-self:end"><button class="btn ghost" onclick="alert('Exported gate activity CSV (stub)')">Export CSV</button></div>
+        </div>
+      </div>
+
+      <div class="grid kpi mt-16">
+        <div class="card kpi-card"><div class="label">On campus now</div><div class="value">${onCampusList.length}</div><div class="delta">${onCampusStudents} students · ${onCampusTeachers} teachers</div></div>
+        <div class="card kpi-card"><div class="label">Total entries today</div><div class="value" style="color:var(--success)">${totalEnters}</div><div class="delta up">across all gates</div></div>
+        <div class="card kpi-card"><div class="label">Total exits today</div><div class="value" style="color:var(--danger)">${totalExits}</div><div class="delta">net flow: +${totalEnters - totalExits}</div></div>
+        <div class="card kpi-card"><div class="label">Active gates</div><div class="value">${gateNames.length}</div><div class="delta">all online</div></div>
+      </div>
+
+      <div class="grid two mt-16" style="grid-template-columns: 2fr 1fr">
+        <div class="card">
+          <div class="row between"><h2>Gate Event Log</h2><span class="text-muted text-sm" id="ga-count"></span></div>
+          <div class="table-wrap mt-12" style="max-height:560px;overflow-y:auto">
+            <table class="data">
+              <thead><tr><th>Time</th><th>Person</th><th>Type</th><th>ID</th><th>Direction</th><th>Gate</th><th></th></tr></thead>
+              <tbody id="ga-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div>
+          <div class="card">
+            <h2>Flow over time</h2>
+            <div class="chart-wrap"><canvas id="ch-flow"></canvas></div>
+            <p class="text-muted text-sm mt-12">Entries (green) vs. exits (red) bucketed in 30-minute windows.</p>
+          </div>
+
+          <div class="card mt-16">
+            <h2>Currently on campus</h2>
+            <div style="max-height:240px;overflow-y:auto" class="mt-12">
+              ${onCampusList.length === 0 ? '<div class="empty"><div class="emoji">🚪</div>No one on campus.</div>' :
+                onCampusList.map(p => `<div class="feed-item">
+                  <span class="dot" style="background:var(--success)"></span>
+                  <div style="flex:1"><strong>${p.name}</strong> <span class="text-muted text-sm">${p.id}</span></div>
+                  ${personPill(p)}
+                </div>`).join('')}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `);
+
+  // ---- Gate Activity view rendering + filters ----
+  function renderGate() {
+    const kind = document.getElementById('ga-kind').value;
+    const dir  = document.getElementById('ga-dir').value;
+    const gate = document.getElementById('ga-gate').value;
+    const q    = document.getElementById('ga-q').value.trim().toLowerCase();
+    const list = gateEvents.filter(e =>
+      (kind === 'all' || e.person.kind === kind) &&
+      (dir === 'all' || e.dir === dir) &&
+      (gate === 'all' || e.gate === gate) &&
+      (!q || (e.person.name + ' ' + e.person.id).toLowerCase().includes(q))
+    );
+    document.getElementById('ga-count').textContent = `${list.length} events`;
+    document.getElementById('ga-tbody').innerHTML = list.map(e => `<tr>
+      <td><code>${hhmm(e.time)}</code></td>
+      <td>${e.person.name}</td>
+      <td>${personPill(e.person)}</td>
+      <td><code>${e.person.id}</code></td>
+      <td>${dirPill(e.dir)}</td>
+      <td>${e.gate}</td>
+      <td><button class="btn ghost btn-sm" onclick="alert('Event ${e.id}\\n${e.person.name} (${e.person.kind})\\n${e.dir} via ${e.gate}\\n${e.time.toLocaleString()}')">Details</button></td>
+    </tr>`).join('') || '<tr><td colspan="7" class="text-muted" style="text-align:center;padding:24px">No matching events.</td></tr>';
+  }
+  ['ga-kind','ga-dir','ga-gate','ga-q','ga-date'].forEach(id => document.getElementById(id).addEventListener('input', renderGate));
+  renderGate();
+
+  // ---- Flow chart (entries vs exits per 30-min bucket) ----
+  const buckets = {};
+  for (let h = 7; h < 22; h++) for (let m of [0,30]) buckets[pad(h)+':'+pad(m)] = { e: 0, x: 0 };
+  gateEvents.forEach(e => {
+    const h = e.time.getHours(), m = e.time.getMinutes() < 30 ? 0 : 30;
+    const k = pad(h) + ':' + pad(m);
+    if (buckets[k]) buckets[k][e.dir === 'Enter' ? 'e' : 'x']++;
+  });
+  const flowLabels = Object.keys(buckets);
+  const flowEnter  = flowLabels.map(k => buckets[k].e);
+  const flowExit   = flowLabels.map(k => -buckets[k].x); // negative for visual contrast
+
+  new Chart(document.getElementById('ch-flow'), {
+    type: 'bar',
+    data: { labels: flowLabels, datasets: [
+      { label: 'Enter', data: flowEnter, backgroundColor: 'rgba(22,163,74,.75)', borderRadius: 3, stack: 's' },
+      { label: 'Exit',  data: flowExit,  backgroundColor: 'rgba(220,38,38,.75)', borderRadius: 3, stack: 's' }
+    ]},
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: { y: { ticks: { callback: v => Math.abs(v) } } } }
+  });
+
+  // ---- Tab switching between Lesson Roster and Gate Activity ----
+  document.querySelectorAll('[data-view]').forEach(btn => btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-view]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const v = btn.dataset.view;
+    document.getElementById('view-lesson').style.display = v === 'lesson' ? 'block' : 'none';
+    document.getElementById('view-gate').style.display   = v === 'gate'   ? 'block' : 'none';
+  }));
+
+  new Chart(document.getElementById('ch-bucket'), {
+    type: 'bar',
+    data: {
+      labels: ['08:45','08:50','08:55','09:00','09:05','09:10','09:15','09:20','09:25'],
+      datasets: [{ label: 'Check-ins', data: [1, 3, 6, 9, 5, 2, 2, 1, 1], backgroundColor: '#1A5AD7', borderRadius: 4 }]
+    },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+  });
+</script>
+</body></html>

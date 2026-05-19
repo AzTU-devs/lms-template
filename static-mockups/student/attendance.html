@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Attendance — UniFlow</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static-mockups/assets/css/styles.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  .att-bar { height: 10px; background: var(--bg); border-radius: 6px; overflow: hidden; margin-top: 6px; }
+  .att-bar > div { height: 100%; border-radius: 6px; }
+  .att-row { padding: 10px 0; border-bottom: 1px dashed var(--border); }
+  .att-row:last-child { border-bottom: none; }
+  .qr-card { display: flex; gap: 16px; align-items: center; }
+  .qr-img { width: 160px; height: 160px; border: 1px solid var(--border); border-radius: 8px; padding: 8px; background: #fff; }
+</style>
+</head><body>
+<script src="/static-mockups/assets/js/mock-data.js"></script>
+<script src="/static-mockups/assets/js/app.js"></script>
+<script>
+  UniFlow.renderShell({ title: 'My Attendance' });
+
+  const totalLessons = MOCK.attendance.reduce((a, s) => a + s.total, 0);
+  const attended = MOCK.attendance.reduce((a, s) => a + s.attended, 0);
+  const missed = totalLessons - attended;
+  const overall = Math.round((attended / totalLessons) * 100);
+  const lateCount = MOCK.attendanceLog.filter(l => l.status === 'Late').length + 3; // synth
+  const absentCount = MOCK.attendanceLog.filter(l => l.status === 'Absent').length;
+
+  function barColor(pct) {
+    if (pct >= 85) return '#22C55E';
+    if (pct >= 70) return '#F0A500';
+    return '#E25555';
+  }
+  function statusBadge(s) {
+    const map = { 'On time': 'success', Late: 'warn', Absent: 'danger' };
+    return `<span class="badge ${map[s] || 'muted'}">${s}</span>`;
+  }
+
+  UniFlow.setContent(`
+    <div class="grid kpi">
+      <div class="card kpi-card"><div class="label">Overall Attendance</div><div class="value">${overall}%</div><div class="delta ${overall>=85?'up':'down'}">${overall>=85?'On track':'Below 85% target'}</div></div>
+      <div class="card kpi-card"><div class="label">Lessons Attended</div><div class="value">${attended}</div><div class="delta">of ${totalLessons} scheduled</div></div>
+      <div class="card kpi-card"><div class="label">Lessons Missed</div><div class="value">${missed}</div><div class="delta down">${absentCount} unexcused</div></div>
+      <div class="card kpi-card"><div class="label">Late Arrivals</div><div class="value">${lateCount}</div><div class="delta down">this semester</div></div>
+    </div>
+
+    <div class="grid two mt-16" style="grid-template-columns: 2fr 1fr">
+      <div class="card">
+        <div class="row between"><h2>Per-subject Attendance</h2><span class="badge muted">Fall 2025</span></div>
+        <div class="mt-12">
+          ${MOCK.attendance.map(s => {
+            const pct = Math.round((s.attended / s.total) * 100);
+            return `<div class="att-row">
+              <div class="row between">
+                <div><strong>${s.subject}</strong> <span class="text-muted text-sm">· ${s.attended}/${s.total} lessons</span></div>
+                <div><strong style="color:${barColor(pct)}">${pct}%</strong></div>
+              </div>
+              <div class="att-bar"><div style="width:${pct}%;background:${barColor(pct)}"></div></div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Check in via QR</h2>
+        <p class="text-muted text-sm">Scan the classroom code to mark presence as a fallback when the turnstile gate is unavailable.</p>
+        <div class="qr-card mt-12">
+          <img class="qr-img" alt="QR code" src="https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=UniFlow-Checkin-S1001">
+          <div>
+            <div class="text-sm"><strong>Student:</strong> Aysel Quliyeva</div>
+            <div class="text-sm"><strong>ID:</strong> S-1001</div>
+            <div class="text-sm text-muted mt-12">Code refreshes every 60 seconds.</div>
+            <button class="btn primary btn-sm mt-12" onclick="alert('Camera opened (stub)')">📷 Scan classroom code</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid two mt-16">
+      <div class="card">
+        <h2>Attendance Trend (weekly)</h2>
+        <div class="chart-wrap"><canvas id="ch-trend"></canvas></div>
+      </div>
+      <div class="card">
+        <h2>By Status</h2>
+        <div class="chart-wrap"><canvas id="ch-status"></canvas></div>
+      </div>
+    </div>
+
+    <div class="card mt-16">
+      <div class="row between">
+        <h2>Recent Check-ins</h2>
+        <div class="row">
+          <button class="btn ghost btn-sm">Export</button>
+          <button class="btn ghost btn-sm">Dispute…</button>
+        </div>
+      </div>
+      <div class="table-wrap mt-12">
+        <table class="data">
+          <thead><tr><th>Time</th><th>Gate</th><th>Lesson</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            ${MOCK.attendanceLog.map(l => `<tr>
+              <td>${UniFlow.fmt.dateTime(l.time)}</td>
+              <td>${l.gate}</td>
+              <td>${l.lesson}</td>
+              <td>${statusBadge(l.status)}</td>
+              <td><button class="btn ghost btn-sm" onclick="alert('Details (stub)')">View</button></td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `);
+
+  new Chart(document.getElementById('ch-trend'), {
+    type: 'line',
+    data: { labels: ['Wk1','Wk2','Wk3','Wk4','Wk5','Wk6','Wk7','Wk8'], datasets: [{
+      label: 'Attendance %', data: [92, 88, 95, 80, 84, 90, 78, 88],
+      borderColor: '#1A5AD7', backgroundColor: 'rgba(26,90,215,0.15)', fill: true, tension: 0.35
+    }]},
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { suggestedMin: 60, suggestedMax: 100, ticks: { callback: v => v + '%' } } } }
+  });
+  new Chart(document.getElementById('ch-status'), {
+    type: 'doughnut',
+    data: { labels: ['On time','Late','Absent'], datasets: [{ data: [attended - lateCount, lateCount, missed], backgroundColor: ['#22C55E','#F0A500','#E25555'], borderWidth: 0 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+  });
+</script>
+</body></html>

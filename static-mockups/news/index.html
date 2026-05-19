@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>News — UniFlow</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static-mockups/assets/css/styles.css">
+<style>
+  .hero-strip { display:flex; gap:16px; overflow-x:auto; scroll-snap-type:x mandatory; padding-bottom:8px; }
+  .hero-card { flex:0 0 380px; scroll-snap-align:start; background:linear-gradient(135deg,#1A5AD7,#2d6fe8); color:#fff; border-radius:12px; padding:24px; min-height:220px; display:flex; flex-direction:column; justify-content:space-between; }
+  .hero-card .badge { background:rgba(255,255,255,0.2); color:#fff; border:none; }
+  .hero-card h2 { margin:8px 0; font-size:22px; line-height:1.3; }
+  .hero-card .excerpt { opacity:.92; font-size:14px; }
+  .hero-card .meta { display:flex; justify-content:space-between; align-items:center; font-size:13px; opacity:.9; }
+  .hero-card a { color:#fff; text-decoration:underline; }
+  .pills { display:flex; gap:8px; flex-wrap:wrap; margin:16px 0; }
+  .pill { padding:6px 14px; border-radius:999px; border:1px solid #E2E6EE; background:#fff; cursor:pointer; font-size:13px; font-weight:500; }
+  .pill.active { background:#1A5AD7; color:#fff; border-color:#1A5AD7; }
+  .news-item { padding:16px 0; border-bottom:1px solid #EEF1F6; }
+  .news-item:last-child { border-bottom:none; }
+  .news-item h3 { margin:6px 0; font-size:16px; }
+  .news-item .meta { font-size:12px; color:#6B7280; }
+  .layout { display:grid; grid-template-columns:1fr 300px; gap:24px; }
+  @media (max-width:900px) { .layout { grid-template-columns:1fr; } }
+</style>
+</head><body>
+<script src="/static-mockups/assets/js/mock-data.js"></script>
+<script src="/static-mockups/assets/js/app.js"></script>
+<script>
+UniFlow.renderShell({ title: 'News' });
+
+const featured = (MOCK.news || []).filter(n => n.featured);
+const all = MOCK.news || [];
+const cats = ['All','Academic','Research','Campus Life','Sports'];
+
+function heroHTML() {
+  if (!featured.length) return '';
+  return `<div class="hero-strip">${featured.map(n => `
+    <div class="hero-card">
+      <div>
+        <span class="badge">${n.cat}</span>
+        <h2>${n.title}</h2>
+        <div class="excerpt">${n.excerpt || ''}</div>
+      </div>
+      <div class="meta"><span>${UniFlow.fmt.date(n.date)}</span><a href="#">Read more &rarr;</a></div>
+    </div>`).join('')}</div>`;
+}
+
+function pillsHTML() {
+  return `<div class="pills" id="catPills">${cats.map((c,i) => `<button class="pill ${i===0?'active':''}" data-cat="${c}">${c}</button>`).join('')}</div>`;
+}
+
+function feedHTML(cat) {
+  const items = cat === 'All' ? all : all.filter(n => n.cat === cat);
+  if (!items.length) return `<div class="empty">No articles in this category.</div>`;
+  return items.map(n => `
+    <div class="news-item">
+      <span class="badge muted">${n.cat}</span>
+      <h3>${n.title}</h3>
+      <div class="muted" style="font-size:14px;">${n.excerpt || ''}</div>
+      <div class="meta mt-12">${UniFlow.fmt.date(n.date)} &middot; <a href="#">Read article</a></div>
+    </div>`).join('');
+}
+
+function sidebarHTML() {
+  return `
+    <div class="card">
+      <h3 style="margin-top:0;">Email Digest</h3>
+      <p class="muted" style="font-size:13px;">Get the weekly UniFlow news roundup.</p>
+      <div class="field"><input type="email" placeholder="you@university.edu" style="width:100%;padding:8px 10px;border:1px solid #E2E6EE;border-radius:6px;"></div>
+      <button class="btn primary" style="width:100%;margin-top:8px;" onclick="alert('Subscribed (stub)')">Subscribe</button>
+    </div>
+    <div class="card mt-16">
+      <h3 style="margin-top:0;">RSS Feed</h3>
+      <p class="muted" style="font-size:13px;">Follow UniFlow news in your reader.</p>
+      <a class="btn ghost" href="/api/news/rss">Open RSS</a>
+    </div>
+  `;
+}
+
+function adminHTML() {
+  if (UniFlow.ROLE !== 'Admin') return '';
+  return `
+    <div class="card mt-24">
+      <h3 style="margin-top:0;">Create Post (Admin)</h3>
+      <div class="grid two">
+        <div class="field"><label>Title</label><input type="text" placeholder="Article title" style="width:100%;padding:8px 10px;border:1px solid #E2E6EE;border-radius:6px;"></div>
+        <div class="field"><label>Category</label>
+          <select style="width:100%;padding:8px 10px;border:1px solid #E2E6EE;border-radius:6px;">
+            ${cats.slice(1).map(c => `<option>${c}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="field"><label>Body</label>
+        <div style="border:1px solid #E2E6EE;border-radius:6px;background:#FAFBFC;">
+          <div style="padding:6px 10px;border-bottom:1px solid #E2E6EE;font-size:12px;color:#6B7280;">TipTap editor would mount here &mdash; B / I / U / Link / Image / Heading</div>
+          <textarea rows="6" placeholder="Write your article..." style="width:100%;padding:10px;border:none;background:transparent;resize:vertical;"></textarea>
+        </div>
+      </div>
+      <div class="row between mt-12">
+        <label><input type="checkbox"> Feature on homepage</label>
+        <button class="btn primary" onclick="alert('Published (stub)')">Publish</button>
+      </div>
+    </div>`;
+}
+
+UniFlow.setContent(`
+  <div class="layout">
+    <div>
+      <h2 style="margin-top:0;">Featured</h2>
+      ${heroHTML()}
+      <h2 class="mt-24">Latest News</h2>
+      ${pillsHTML()}
+      <div class="card"><div id="feed">${feedHTML('All')}</div></div>
+      ${adminHTML()}
+    </div>
+    <div>${sidebarHTML()}</div>
+  </div>
+`);
+
+document.querySelectorAll('#catPills .pill').forEach(p => {
+  p.addEventListener('click', () => {
+    document.querySelectorAll('#catPills .pill').forEach(x => x.classList.remove('active'));
+    p.classList.add('active');
+    document.getElementById('feed').innerHTML = feedHTML(p.dataset.cat);
+  });
+});
+</script>
+</body></html>

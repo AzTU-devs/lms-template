@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Paper Exams — UniFlow</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static-mockups/assets/css/styles.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head><body>
+<script src="/static-mockups/assets/js/mock-data.js"></script>
+<script src="/static-mockups/assets/js/app.js"></script>
+<script>
+  UniFlow.renderShell({ title: 'Paper Exams' });
+
+  const isPriv = UniFlow.ROLE === 'Teacher' || UniFlow.ROLE === 'Admin';
+  const state = { view: 'student', manualRows: [] };
+
+  const gradePoints = { 'A':4, 'A-':3.7, 'B+':3.3, 'B':3, 'B-':2.7, 'C+':2.3, 'C':2, 'C-':1.7, 'D':1, 'F':0 };
+  const gradeBadge = (g) => {
+    if (g.startsWith('A')) return `<span class="badge success">${g}</span>`;
+    if (g.startsWith('B')) return `<span class="badge info">${g}</span>`;
+    if (g.startsWith('C')) return `<span class="badge warn">${g}</span>`;
+    return `<span class="badge danger">${g}</span>`;
+  };
+
+  const paperExams = MOCK.exams.filter(e => e.type === 'paper').sort((a,b) => new Date(a.date) - new Date(b.date));
+
+  function studentView() {
+    return `
+      <div class="row between">
+        <div>
+          <h2 style="margin:0">Your paper exam results</h2>
+          <div class="text-muted text-sm">Verified by the Registrar's Office. All grades final.</div>
+        </div>
+        <div class="row" style="gap:8px">
+          <button class="btn ghost" onclick="alert('Email transcript stub')">Email me a copy</button>
+          <button class="btn primary" onclick="alert('PDF transcript download stub')">Download transcript (PDF)</button>
+        </div>
+      </div>
+
+      <div class="card mt-16">
+        <div class="table-wrap">
+          <table class="data">
+            <thead><tr><th>Date</th><th>Subject</th><th>Marks</th><th>Grade</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              ${paperExams.map(e => `
+                <tr>
+                  <td>${UniFlow.fmt.date(e.date)}</td>
+                  <td><strong>${e.subject}</strong></td>
+                  <td>${e.score} / ${e.max}</td>
+                  <td>${gradeBadge(e.grade)}</td>
+                  <td><span class="badge success">Released</span></td>
+                  <td><button class="btn btn-sm ghost" onclick="alert('Answer sheet scan stub')">View scan</button></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="grid two mt-16">
+        <div class="card">
+          <h2>GPA trend</h2>
+          <div class="text-muted text-sm">Cumulative GPA after each paper exam (A=4.0, A-=3.7, B+=3.3, B=3.0…)</div>
+          <div class="chart-wrap mt-12"><canvas id="gpa-chart"></canvas></div>
+        </div>
+        <div class="card">
+          <h2>Score distribution</h2>
+          <div class="text-muted text-sm">Your marks across paper exams compared to passing line (60)</div>
+          <div class="chart-wrap mt-12"><canvas id="dist-chart"></canvas></div>
+        </div>
+      </div>
+    `;
+  }
+
+  function teacherView() {
+    return `
+      <div class="row between">
+        <div>
+          <h2 style="margin:0">Upload &amp; manage paper results</h2>
+          <div class="text-muted text-sm">Bulk-import via CSV or add results manually. Students see results once you publish.</div>
+        </div>
+        <div class="row" style="gap:8px">
+          <button class="btn ghost" onclick="alert('Template download stub')">Download CSV template</button>
+          <button class="btn primary" onclick="alert('Publish stub — would notify students')">Publish all</button>
+        </div>
+      </div>
+
+      <div class="grid two mt-16">
+        <div class="card">
+          <h2>CSV upload</h2>
+          <div id="dropzone" style="border:2px dashed var(--border);border-radius:12px;padding:36px;text-align:center;background:#f8fafc;cursor:pointer"
+               ondragover="event.preventDefault();this.style.borderColor='var(--primary)'"
+               ondragleave="this.style.borderColor='var(--border)'"
+               ondrop="event.preventDefault();this.style.borderColor='var(--border)';alert('Drop received — parsing stub')">
+            <div style="font-size:40px">📂</div>
+            <div style="font-weight:600;margin-top:8px">Drop CSV file here</div>
+            <div class="text-muted text-sm">or click to browse · max 5MB · columns: student_id, subject, score, max, grade</div>
+            <div class="mt-12"><button class="btn primary" onclick="alert('File picker stub')">Upload CSV</button></div>
+          </div>
+          <div class="mt-16 text-sm text-muted">
+            <strong>Last import:</strong> midterm-cs-fall25.csv · 142 rows · 3 errors · <a href="#" onclick="alert('Error log stub');return false">view errors</a>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Manual entry</h2>
+          <form onsubmit="event.preventDefault();window._addRow(new FormData(this));this.reset();">
+            <div class="field">
+              <label>Subject</label>
+              <select name="subject" required>${MOCK.subjects.map(s=>`<option>${s}</option>`).join('')}</select>
+            </div>
+            <div class="field mt-12">
+              <label>Student</label>
+              <select name="student" required>${MOCK.students.map(s=>`<option value="${s.id}">${s.id} — ${s.name}</option>`).join('')}</select>
+            </div>
+            <div class="grid three mt-12">
+              <div class="field"><label>Score</label><input name="score" type="number" min="0" required value="78"></div>
+              <div class="field"><label>Max</label><input name="max" type="number" min="1" required value="100"></div>
+              <div class="field"><label>Grade</label>
+                <select name="grade">${Object.keys(gradePoints).map(g=>`<option>${g}</option>`).join('')}</select>
+              </div>
+            </div>
+            <div class="mt-16 row" style="gap:8px">
+              <button type="reset" class="btn ghost">Clear</button>
+              <button type="submit" class="btn primary">Add result</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div class="card mt-16">
+        <div class="row between">
+          <h2 style="margin:0">Pending results (this session)</h2>
+          <span class="badge muted" id="row-count">${state.manualRows.length} added</span>
+        </div>
+        <div class="table-wrap mt-12">
+          <table class="data" id="manual-table">
+            <thead><tr><th>Subject</th><th>Student</th><th>Score</th><th>Grade</th><th></th></tr></thead>
+            <tbody id="manual-body">
+              ${state.manualRows.length === 0
+                ? '<tr><td colspan="5"><div class="empty"><div class="emoji">📥</div>No results added yet — use the form above.</div></td></tr>'
+                : state.manualRows.map((r,i) => `<tr><td>${r.subject}</td><td>${r.student}</td><td>${r.score}/${r.max}</td><td>${gradeBadge(r.grade)}</td><td><button class="btn btn-sm ghost" onclick="window._removeRow(${i})">Remove</button></td></tr>`).join('')
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  function render() {
+    const tabs = `
+      <div class="tabs">
+        <button class="${state.view==='student'?'active':''}" onclick="window._setView('student')">Student view</button>
+        <button class="${state.view==='teacher'?'active':''}" onclick="window._setView('teacher')">Teacher / Admin view${isPriv?'':' (read-only demo)'}</button>
+      </div>
+    `;
+    UniFlow.setContent(tabs + (state.view === 'student' ? studentView() : teacherView()));
+    if (state.view === 'student') drawCharts();
+  }
+
+  function drawCharts() {
+    let cumPts = 0, count = 0;
+    const gpaSeries = paperExams.map(e => {
+      cumPts += gradePoints[e.grade] ?? 0; count++;
+      return +(cumPts/count).toFixed(2);
+    });
+
+    new Chart(document.getElementById('gpa-chart'), {
+      type: 'line',
+      data: {
+        labels: paperExams.map(e => UniFlow.fmt.date(e.date)),
+        datasets: [{
+          label: 'Cumulative GPA',
+          data: gpaSeries,
+          borderColor: '#1A5AD7',
+          backgroundColor: 'rgba(26,90,215,0.15)',
+          fill: true, tension: 0.3, borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#1A5AD7',
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { y: { suggestedMin: 2, suggestedMax: 4 } },
+      },
+    });
+
+    new Chart(document.getElementById('dist-chart'), {
+      type: 'bar',
+      data: {
+        labels: paperExams.map(e => e.subject),
+        datasets: [{
+          label: 'Score',
+          data: paperExams.map(e => e.score),
+          backgroundColor: 'rgba(26,90,215,0.7)',
+          borderRadius: 6,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          annotation: false,
+        },
+        scales: { y: { beginAtZero: true, max: 100 } },
+      },
+    });
+  }
+
+  window._setView = (v) => { state.view = v; render(); };
+  window._addRow = (fd) => {
+    state.manualRows.push({
+      subject: fd.get('subject'),
+      student: fd.get('student'),
+      score: fd.get('score'),
+      max: fd.get('max'),
+      grade: fd.get('grade'),
+    });
+    render();
+  };
+  window._removeRow = (i) => { state.manualRows.splice(i,1); render(); };
+
+  render();
+</script>
+</body></html>

@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mobile App — UniFlow</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static-mockups/assets/css/styles.css">
+<style>
+  .hero { background:linear-gradient(135deg,#1A5AD7,#3a7af0); color:#fff; padding:48px; border-radius:14px; display:grid; grid-template-columns:1fr auto; gap:32px; align-items:center; }
+  .hero h1 { font-size:34px; margin:0 0 12px; }
+  .hero p { font-size:16px; opacity:.92; max-width:480px; }
+  .store-row { display:flex; gap:12px; margin-top:20px; flex-wrap:wrap; }
+  .store-badge { display:inline-flex; align-items:center; gap:10px; padding:10px 18px; border-radius:10px; background:#000; color:#fff; text-decoration:none; font-weight:500; }
+  .store-badge.play { background:#0F9D58; }
+  .store-badge small { display:block; font-size:10px; opacity:.8; line-height:1; }
+  .store-badge strong { display:block; font-size:15px; line-height:1.2; }
+  .phone-mock { width:200px; height:380px; background:#111; border-radius:30px; padding:10px; position:relative; box-shadow:0 20px 60px rgba(0,0,0,.3); }
+  .phone-mock .screen { background:#fff; border-radius:22px; width:100%; height:100%; padding:14px; font-size:11px; }
+  .qr-row { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:24px; }
+  .qr-card { text-align:center; }
+  .feat-list { display:grid; grid-template-columns:repeat(2,1fr); gap:12px; }
+  .feat { display:flex; gap:12px; align-items:flex-start; padding:14px; border:1px solid #EEF1F6; border-radius:8px; }
+  .feat-icon { width:36px; height:36px; background:#EEF3FD; color:#1A5AD7; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0; }
+  @media (max-width:700px){ .hero{grid-template-columns:1fr;padding:28px;} .phone-mock{display:none;} .feat-list{grid-template-columns:1fr;} }
+</style>
+</head><body>
+<script src="/static-mockups/assets/js/mock-data.js"></script>
+<script src="/static-mockups/assets/js/app.js"></script>
+<script>
+const APP_STORE_URL = '#';
+const PLAY_STORE_URL = '#';
+
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferredPrompt = e; });
+
+UniFlow.renderShell({ title: 'Mobile App' });
+
+UniFlow.setContent(`
+  <div class="hero">
+    <div>
+      <h1>UniFlow on the go</h1>
+      <p>Your schedule, homework, grades, and campus updates — in your pocket. Get push notifications for new assignments, scan QR for attendance, and work offline between classes.</p>
+      <div class="store-row">
+        <a class="store-badge" href="${APP_STORE_URL}"><span style="font-size:24px;">&#xf179;</span><span><small>Download on the</small><strong>App Store</strong></span></a>
+        <a class="store-badge play" href="${PLAY_STORE_URL}"><span style="font-size:22px;">&#9654;</span><span><small>GET IT ON</small><strong>Google Play</strong></span></a>
+      </div>
+    </div>
+    <div class="phone-mock"><div class="screen">
+      <div style="font-weight:700;color:#1A5AD7;">UniFlow</div>
+      <div style="margin-top:10px;font-size:10px;color:#6B7280;">TODAY</div>
+      <div style="margin-top:6px;padding:8px;background:#EEF3FD;border-radius:6px;">CS 201 &middot; 9:00 AM</div>
+      <div style="margin-top:6px;padding:8px;background:#F5F7FA;border-radius:6px;">MATH 240 &middot; 11:00 AM</div>
+      <div style="margin-top:10px;font-size:10px;color:#6B7280;">DUE SOON</div>
+      <div style="margin-top:6px;padding:8px;background:#FFF7E6;border-radius:6px;">PSET 4 &middot; tomorrow</div>
+    </div></div>
+  </div>
+
+  <div class="grid two mt-24">
+    <div class="card">
+      <h3 style="margin-top:0;">Scan to install</h3>
+      <div class="qr-row">
+        <div class="qr-card">
+          <img src="https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(APP_STORE_URL)}" alt="iOS QR" width="160" height="160">
+          <div class="mt-12" style="font-weight:600;">iOS</div>
+        </div>
+        <div class="qr-card">
+          <img src="https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(PLAY_STORE_URL)}" alt="Android QR" width="160" height="160">
+          <div class="mt-12" style="font-weight:600;">Android</div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0;">Install as Web App (PWA)</h3>
+      <p class="muted">No App Store needed — install UniFlow straight from your browser. Works offline.</p>
+      <button class="btn primary" id="pwaInstall">Install UniFlow</button>
+      <div class="muted mt-12" style="font-size:12px;">Compatible with Chrome, Edge, Safari (Add to Home Screen).</div>
+    </div>
+  </div>
+
+  <div class="card mt-24">
+    <h3 style="margin-top:0;">What you get</h3>
+    <div class="feat-list">
+      <div class="feat"><div class="feat-icon">&#128197;</div><div><strong>Offline schedule</strong><div class="muted" style="font-size:13px;">Today's classes always available, no signal needed.</div></div></div>
+      <div class="feat"><div class="feat-icon">&#128221;</div><div><strong>Offline homework</strong><div class="muted" style="font-size:13px;">Read prompts and draft answers offline; syncs later.</div></div></div>
+      <div class="feat"><div class="feat-icon">&#128276;</div><div><strong>Push notifications</strong><div class="muted" style="font-size:13px;">New grades, deadlines, and announcements.</div></div></div>
+      <div class="feat"><div class="feat-icon">&#128279;</div><div><strong>QR check-in</strong><div class="muted" style="font-size:13px;">Mark attendance in seconds with one scan.</div></div></div>
+    </div>
+  </div>
+
+  <div class="muted mt-16" style="font-size:13px;text-align:center;">On mobile devices a smart banner appears automatically at the bottom of every page.</div>
+`);
+
+document.getElementById('pwaInstall').addEventListener('click', async () => {
+  if (deferredPrompt) {
+    deferredPrompt.prompt();
+    await deferredPrompt.userChoice;
+    deferredPrompt = null;
+  } else {
+    alert('PWA install not available in this browser context — this would normally trigger the native prompt.');
+  }
+});
+</script>
+</body></html>

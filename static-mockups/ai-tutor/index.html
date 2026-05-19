@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Tutor — UniFlow</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static-mockups/assets/css/styles.css">
+<style>
+  .tutor-layout { display:grid; grid-template-columns:260px 1fr 280px; gap:16px; height:calc(100vh - 140px); }
+  @media (max-width:1100px){ .tutor-layout{grid-template-columns:1fr;} .tutor-side,.tutor-info{display:none;} }
+  .tutor-side, .tutor-info, .tutor-main { background:#fff; border:1px solid #EEF1F6; border-radius:10px; padding:16px; display:flex; flex-direction:column; min-height:0; }
+  .conv-item { padding:10px; border-radius:6px; cursor:pointer; font-size:13px; color:#374151; }
+  .conv-item:hover, .conv-item.active { background:#EEF3FD; color:#1A5AD7; }
+  .msgs { flex:1; overflow-y:auto; padding:8px; display:flex; flex-direction:column; gap:12px; }
+  .msg { max-width:80%; padding:12px 14px; border-radius:12px; font-size:14px; line-height:1.5; white-space:pre-wrap; }
+  .msg.user { align-self:flex-end; background:#1A5AD7; color:#fff; border-bottom-right-radius:4px; }
+  .msg.bot { align-self:flex-start; background:#F5F7FA; color:#1F2937; border-bottom-left-radius:4px; }
+  .msg.system { align-self:center; background:#FFF7E6; color:#7A5C00; font-size:12px; padding:8px 12px; border-radius:6px; max-width:90%; }
+  .chips { display:flex; gap:6px; flex-wrap:wrap; padding:8px 0; }
+  .chip { padding:6px 12px; border-radius:999px; background:#EEF3FD; color:#1A5AD7; font-size:12px; cursor:pointer; border:none; }
+  .input-row { display:flex; gap:8px; padding-top:8px; border-top:1px solid #EEF1F6; }
+  .input-row input { flex:1; padding:10px 12px; border:1px solid #E2E6EE; border-radius:8px; }
+</style>
+</head><body>
+<script src="/static-mockups/assets/js/mock-data.js"></script>
+<script src="/static-mockups/assets/js/app.js"></script>
+<script>
+UniFlow.renderShell({ title: 'AI Tutor', hideChat: true });
+
+const convs = [
+  'Big-O of merge sort',
+  'Eigenvalue intuition',
+  'Demand elasticity worked example',
+  "Newton's third law refresher",
+  'Essay structure for cause-effect'
+];
+
+const initialMsgs = [
+  { role:'system', text:"I'm your academic tutor. I'll walk you through concepts step-by-step. I won't just hand you graded-homework answers." },
+  { role:'user', text:'Explain Big-O of merge sort' },
+  { role:'bot', text:`Great question. Let's build this up step-by-step.\n\nStep 1 — What merge sort does:\nIt splits an array in half recursively until each piece has 1 element, then merges pairs back together in sorted order.\n\nStep 2 — Counting the splits:\nIf the array has n elements, halving it takes log₂(n) levels before reaching size-1 pieces.\n\nStep 3 — Counting work per level:\nAt every level of merging, you touch all n elements once (the merge step is linear).\n\nStep 4 — Combine:\nlog(n) levels × n work each = O(n log n).\n\nThat's the time complexity. Space is O(n) because merge needs a buffer.` },
+  { role:'user', text:'Why is the merge step O(n)?' },
+  { role:'bot', text:'Because to merge two sorted halves of total size n, you walk a pointer through each half exactly once, comparing the fronts and copying the smaller — that\'s n comparisons and n copies, hence linear.' }
+];
+
+let msgs = initialMsgs.slice();
+
+function renderMsgs() {
+  const box = document.getElementById('msgs');
+  box.innerHTML = msgs.map(m => `<div class="msg ${m.role}">${m.text}</div>`).join('');
+  box.scrollTop = box.scrollHeight;
+}
+
+function stubTutorReply(userText) {
+  const t = userText.toLowerCase();
+  if ((t.includes('answer') || t.includes('solution')) && (t.includes('homework') || t.includes('assignment'))) {
+    return "I can't just give you the answer to graded homework — but I'm happy to walk you through the underlying concept. Which step is tripping you up?";
+  }
+  return `Let's work through "${userText}" together.\n\nStep 1 — Identify what's being asked.\nStep 2 — Recall the relevant principle.\nStep 3 — Apply it carefully to this case.\nStep 4 — Sanity-check the result.\n\nTry the first step yourself and tell me what you get — I'll guide you from there.`;
+}
+
+function typewriter(text) {
+  const m = { role:'bot', text:'' };
+  msgs.push(m);
+  renderMsgs();
+  const last = document.querySelector('#msgs .msg.bot:last-child');
+  let i = 0;
+  const iv = setInterval(() => {
+    i += 2;
+    m.text = text.slice(0, i);
+    if (last) { last.textContent = m.text; document.getElementById('msgs').scrollTop = 9e9; }
+    if (i >= text.length) clearInterval(iv);
+  }, 18);
+}
+
+function sendMsg(text) {
+  if (!text.trim()) return;
+  msgs.push({ role:'user', text });
+  renderMsgs();
+  setTimeout(() => typewriter(stubTutorReply(text)), 350);
+}
+
+UniFlow.setContent(`
+  <div class="tutor-layout">
+    <div class="tutor-side">
+      <button class="btn primary" style="margin-bottom:12px;">+ New chat</button>
+      <div style="font-size:11px;text-transform:uppercase;color:#6B7280;margin-bottom:6px;letter-spacing:.5px;">Recent</div>
+      <div style="overflow-y:auto;flex:1;">
+        ${convs.map((c,i)=>`<div class="conv-item ${i===0?'active':''}">${c}</div>`).join('')}
+      </div>
+    </div>
+    <div class="tutor-main">
+      <div id="msgs" class="msgs"></div>
+      <div class="chips">
+        <button class="chip" data-prompt="Explain this concept">Explain this concept</button>
+        <button class="chip" data-prompt="Walk me through a problem">Walk me through a problem</button>
+        <button class="chip" data-prompt="Quiz me on chapter 3">Quiz me on chapter 3</button>
+      </div>
+      <form class="input-row" id="tutorForm">
+        <input type="text" id="tutorInput" placeholder="Ask your tutor..." autocomplete="off">
+        <button class="btn primary" type="submit">Send</button>
+      </form>
+    </div>
+    <div class="tutor-info">
+      <div class="card" style="border:none;padding:0;">
+        <div style="font-size:12px;color:#6B7280;text-transform:uppercase;letter-spacing:.5px;">Daily limit</div>
+        <div style="font-size:22px;font-weight:700;margin-top:4px;">18 / 30</div>
+        <div style="font-size:12px;color:#6B7280;">messages remaining today</div>
+        <div style="height:6px;background:#EEF1F6;border-radius:3px;margin-top:8px;overflow:hidden;"><div style="width:60%;height:100%;background:#1A5AD7;"></div></div>
+      </div>
+      <div style="margin-top:20px;">
+        <div style="font-size:12px;color:#6B7280;text-transform:uppercase;letter-spacing:.5px;">Subject context</div>
+        <select style="width:100%;margin-top:6px;padding:8px 10px;border:1px solid #E2E6EE;border-radius:6px;">
+          <option>Algorithms</option><option>Linear Algebra</option><option>Microeconomics</option><option>Physics I</option><option>English Composition</option>
+        </select>
+      </div>
+      <div style="margin-top:20px;font-size:12px;color:#6B7280;">The tutor uses your enrolled courses and recent homework to ground answers in the right material.</div>
+    </div>
+  </div>
+`);
+
+renderMsgs();
+
+document.getElementById('tutorForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const input = document.getElementById('tutorInput');
+  sendMsg(input.value);
+  input.value = '';
+});
+document.querySelectorAll('.chip').forEach(c => c.addEventListener('click', () => sendMsg(c.dataset.prompt)));
+</script>
+</body></html>

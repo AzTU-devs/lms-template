@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Finance — Revenue — UniFlow</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static-mockups/assets/css/styles.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head><body>
+<script src="/static-mockups/assets/js/mock-data.js"></script>
+<script src="/static-mockups/assets/js/app.js"></script>
+<script>
+  // Role-gating: this page is intended for `admin` and `finance` roles only.
+  UniFlow.renderShell({ title: 'Finance — Revenue' });
+
+  const tx = MOCK.transactions;
+  const studentById = Object.fromEntries(MOCK.students.map(s => [s.id, s]));
+  const ytdRevenue = MOCK.monthlyRevenue.reduce((a, b) => a + b.v, 0);
+  const pending = tx.filter(t => t.status === 'Pending').reduce((a, t) => a + t.amount, 0);
+  const tuitionCollected = tx.filter(t => t.type === 'tuition' && t.status === 'Paid').reduce((a, t) => a + t.amount, 0);
+  const outstanding = MOCK.students.reduce((a, s) => a + s.balance, 0);
+  const refunds = Math.abs(tx.filter(t => t.type === 'refund').reduce((a, t) => a + t.amount, 0));
+
+  const statusBadge = (s) => {
+    const map = { Paid: 'success', Pending: 'warn', Failed: 'danger', Refunded: 'info' };
+    return `<span class="badge ${map[s] || 'muted'}">${s}</span>`;
+  };
+
+  const studentOptions = MOCK.students.map(s => `<option value="${s.id}">${s.name} (${s.id})</option>`).join('');
+  const deptOptions = MOCK.departments.map(d => `<option>${d}</option>`).join('');
+
+  UniFlow.setContent(`
+    <div class="grid kpi">
+      <div class="card kpi-card"><div class="label">Total Revenue (YTD)</div><div class="value">${UniFlow.fmt.money(ytdRevenue)}</div><div class="delta up">+12.4% vs last year</div></div>
+      <div class="card kpi-card"><div class="label">Pending Payments</div><div class="value">${UniFlow.fmt.money(pending)}</div><div class="delta down">${tx.filter(t=>t.status==='Pending').length} transactions</div></div>
+      <div class="card kpi-card"><div class="label">Tuition Collected</div><div class="value">${UniFlow.fmt.money(tuitionCollected)}</div><div class="delta up">+8.1% MoM</div></div>
+      <div class="card kpi-card"><div class="label">Outstanding Balance</div><div class="value">${UniFlow.fmt.money(outstanding)}</div><div class="delta">${MOCK.students.filter(s=>s.balance>0).length} students</div></div>
+      <div class="card kpi-card"><div class="label">Refunds</div><div class="value">${UniFlow.fmt.money(refunds)}</div><div class="delta down">−2.3%</div></div>
+    </div>
+
+    <div class="grid two mt-16">
+      <div class="card">
+        <div class="row between"><h2>Monthly Revenue Trend</h2><span class="badge info">2025</span></div>
+        <div class="chart-wrap"><canvas id="ch-monthly"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="row between"><h2>Revenue by Department</h2><span class="badge muted">YTD</span></div>
+        <div class="chart-wrap"><canvas id="ch-dept"></canvas></div>
+      </div>
+    </div>
+
+    <div class="grid two mt-16">
+      <div class="card">
+        <h2>Revenue by Type</h2>
+        <div class="chart-wrap"><canvas id="ch-type"></canvas></div>
+      </div>
+      <div class="card">
+        <h2>Generate Invoice</h2>
+        <p class="text-muted text-sm">Issue a new invoice to a student account. The invoice will sync to the student's payments page.</p>
+        <div class="filters mt-12">
+          <div class="field flex-1"><label>Student</label><select id="inv-student">${studentOptions}</select></div>
+          <div class="field"><label>Type</label><select><option>Tuition</option><option>Dorm</option><option>Library fee</option><option>Lab fee</option></select></div>
+          <div class="field"><label>Amount (₼)</label><input type="number" value="1200"></div>
+        </div>
+        <div class="row end mt-12"><button class="btn ghost" onclick="alert('Draft saved.')">Save draft</button><button class="btn primary" onclick="alert('Invoice generated and emailed to student.')">Generate</button></div>
+      </div>
+    </div>
+
+    <div class="card mt-16">
+      <div class="row between">
+        <h2>Transactions</h2>
+        <div class="row">
+          <button class="btn ghost btn-sm" onclick="alert('CSV exported.')">Export CSV</button>
+          <button class="btn ghost btn-sm" onclick="alert('PDF exported.')">Export PDF</button>
+        </div>
+      </div>
+      <div class="filters mt-12">
+        <div class="field"><label>From</label><input type="date" value="2025-01-01"></div>
+        <div class="field"><label>To</label><input type="date" value="2025-12-31"></div>
+        <div class="field"><label>Student</label><select><option value="">All students</option>${studentOptions}</select></div>
+        <div class="field"><label>Department</label><select><option value="">All departments</option>${deptOptions}</select></div>
+        <div class="field"><label>Status</label><select><option value="">All</option><option>Paid</option><option>Pending</option><option>Failed</option><option>Refunded</option></select></div>
+      </div>
+      <div class="table-wrap mt-12">
+        <table class="data">
+          <thead><tr><th>ID</th><th>Date</th><th>Student</th><th>Description</th><th>Department</th><th style="text-align:right">Amount</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            ${tx.map(t => {
+              const s = studentById[t.student];
+              const negative = t.amount < 0;
+              return `<tr>
+                <td><code>${t.id}</code></td>
+                <td>${UniFlow.fmt.date(t.date)}</td>
+                <td>${s ? s.name : t.student}</td>
+                <td>${t.desc}</td>
+                <td>${t.dept}</td>
+                <td style="text-align:right;${negative?'color:var(--danger);font-weight:600':''}">${UniFlow.fmt.money(t.amount)}</td>
+                <td>${statusBadge(t.status)}</td>
+                <td><button class="btn ghost btn-sm" onclick="alert('Opening invoice ${t.id}…')">Invoice</button></td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `);
+
+  const primary = '#1A5AD7';
+  const fade = 'rgba(26,90,215,0.15)';
+
+  new Chart(document.getElementById('ch-monthly'), {
+    type: 'line',
+    data: { labels: MOCK.monthlyRevenue.map(m => m.m), datasets: [{
+      label: 'Revenue', data: MOCK.monthlyRevenue.map(m => m.v),
+      borderColor: primary, backgroundColor: fade, fill: true, tension: 0.35, pointRadius: 3, pointBackgroundColor: primary
+    }]},
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: v => '₼' + (v/1000) + 'k' } } } }
+  });
+
+  new Chart(document.getElementById('ch-dept'), {
+    type: 'bar',
+    data: { labels: MOCK.revenueByDept.map(d => d.d), datasets: [{ label: 'Revenue', data: MOCK.revenueByDept.map(d => d.v), backgroundColor: primary, borderRadius: 6 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: v => '₼' + (v/1000) + 'k' } } } }
+  });
+
+  new Chart(document.getElementById('ch-type'), {
+    type: 'doughnut',
+    data: { labels: ['Tuition', 'Dorm', 'Fees', 'Refunds'], datasets: [{
+      data: [68, 14, 12, 6],
+      backgroundColor: ['#1A5AD7', '#4F8BE8', '#F0A500', '#E25555'], borderWidth: 0
+    }]},
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+  });
+</script>
+</body></html>

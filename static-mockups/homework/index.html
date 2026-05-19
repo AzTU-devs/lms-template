@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>Homework — UniFlow</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static-mockups/assets/css/styles.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
+<style>
+  .hw-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+  .hw-card { display: flex; flex-direction: column; gap: 8px; }
+  .hw-card .meta { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .msg-item { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px dashed var(--border); }
+  .msg-item:last-child { border-bottom: none; }
+  .msg-avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--primary-soft); color: var(--primary); display: grid; place-items: center; font-weight: 600; font-size: 13px; flex-shrink: 0; }
+  .attach { display: flex; gap: 8px; align-items: center; padding: 8px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; }
+  .similarity-bar { height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; margin-top: 6px; }
+  .similarity-bar > div { height: 100%; background: var(--success); }
+
+  /* Workspace editor + sandbox */
+  .ws-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 10px; }
+  .ws-tabs button { background: none; border: none; padding: 8px 12px; color: var(--muted); font-weight: 500; border-bottom: 2px solid transparent; font-size: 13px; }
+  .ws-tabs button.active { color: var(--primary); border-bottom-color: var(--primary); }
+  .ws-pane { display: none; }
+  .ws-pane.active { display: block; }
+  #editor-host { height: 320px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .rt-toolbar { display: flex; gap: 4px; padding: 6px; border: 1px solid var(--border); border-bottom: none; border-radius: 8px 8px 0 0; background: var(--bg); }
+  .rt-toolbar button { background: transparent; border: 1px solid transparent; padding: 4px 8px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .rt-toolbar button:hover { background: var(--primary-soft); }
+  #rt-editor { min-height: 180px; padding: 12px; border: 1px solid var(--border); border-radius: 0 0 8px 8px; outline: none; font-size: 14px; line-height: 1.6; }
+  #rt-editor:focus { border-color: var(--primary); }
+  #sandbox-frame { width: 100%; height: 260px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+  #sandbox-console { background: #0B1220; color: #D1D5DB; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; padding: 10px; border-radius: 8px; max-height: 180px; overflow-y: auto; white-space: pre-wrap; margin-top: 8px; }
+  #sandbox-console .line.err { color: #FCA5A5; }
+  #sandbox-console .line.warn { color: #FCD34D; }
+  .lang-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .lang-row select { padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); font: inherit; }
+  .word-count { font-size: 12px; color: var(--muted); margin-top: 6px; }
+</style>
+</head><body>
+<script src="/static-mockups/assets/js/mock-data.js"></script>
+<script src="/static-mockups/assets/js/app.js"></script>
+<script>
+  const isTeacher = UniFlow.ROLE === 'Teacher';
+  UniFlow.renderShell({ title: isTeacher ? 'Homework — Teacher Console' : 'Homework' });
+
+  function statusBadge(s) {
+    const days = (id) => UniFlow.fmt.daysUntil(MOCK.homework.find(h => h.id === id).due);
+    const map = { 'Not started': 'muted', Draft: 'warn', Submitted: 'success' };
+    return `<span class="badge ${map[s] || 'muted'}">${s}</span>`;
+  }
+  function actionFor(h) {
+    if (h.status === 'Submitted') return `<button class="btn ghost btn-sm" data-open="${h.id}">View submission</button>`;
+    if (h.status === 'Draft') return `<button class="btn primary btn-sm" data-open="${h.id}">Continue</button>`;
+    return `<button class="btn primary btn-sm" data-open="${h.id}">Start</button>`;
+  }
+
+  function cardHtml(h) {
+    const dueDays = UniFlow.fmt.daysUntil(h.due);
+    const overdue = dueDays < 0 && h.status !== 'Submitted';
+    const rel = overdue ? `<span class="badge danger">${Math.abs(dueDays)}d overdue</span>` : (dueDays === 0 ? `<span class="badge warn">Due today</span>` : `<span class="text-muted text-sm">in ${dueDays}d</span>`);
+    return `<div class="card hw-card">
+      <div class="meta">
+        <span class="badge info">${h.subject}</span>
+        ${overdue ? statusBadge('Not started').replace('muted','danger').replace('Not started','Late') : statusBadge(h.status)}
+      </div>
+      <h3 style="margin:0">${h.title}</h3>
+      <div class="text-sm text-muted">${h.desc || 'See assignment details inside.'}</div>
+      <div class="row between" style="margin-top:auto;padding-top:8px">
+        <div class="text-sm"><strong>Due:</strong> ${UniFlow.fmt.date(h.due)} ${rel}</div>
+        ${actionFor(h)}
+      </div>
+    </div>`;
+  }
+
+  const tabs = ['All assignments','To submit','Submitted'].concat(isTeacher ? ['Create new'] : []);
+
+  UniFlow.setContent(`
+    <div class="row between">
+      <div class="tabs" style="margin-bottom:0">
+        ${tabs.map((t, i) => `<button class="${i===0?'active':''}" data-tab="${t}">${t}</button>`).join('')}
+      </div>
+      <div class="row">
+        <div class="field" style="margin:0"><select><option>All subjects</option>${MOCK.subjects.map(s=>`<option>${s}</option>`).join('')}</select></div>
+        <div class="field" style="margin:0"><select><option>Due date ↑</option><option>Due date ↓</option><option>Subject</option></select></div>
+      </div>
+    </div>
+
+    <div id="hw-pane" class="mt-16">
+      <div class="hw-grid">
+        ${MOCK.homework.map(cardHtml).join('')}
+      </div>
+    </div>
+
+    <div id="hw-detail" class="card mt-16" style="display:none">
+      <div class="row between">
+        <div>
+          <span class="badge info" id="d-subj"></span>
+          <h2 style="margin:6px 0" id="d-title"></h2>
+          <div class="text-sm text-muted" id="d-due"></div>
+        </div>
+        <button class="btn ghost btn-sm" id="d-close">✕ Close</button>
+      </div>
+
+      <div class="grid two mt-16">
+        <div>
+          <h3>Description</h3>
+          <p id="d-desc" class="text-sm"></p>
+          <h3 class="mt-16">Attachments</h3>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div class="attach">📎 problem-set.pdf <span class="text-muted text-sm" style="margin-left:auto">240 KB</span></div>
+            <div class="attach">📦 starter-code.zip <span class="text-muted text-sm" style="margin-left:auto">1.1 MB</span></div>
+            <div class="attach">📊 dataset.csv <span class="text-muted text-sm" style="margin-left:auto">88 KB</span></div>
+          </div>
+
+          <h3 class="mt-16">Plagiarism Check</h3>
+          <div class="card" style="background:var(--bg)">
+            <div class="row between"><strong>Similarity: 4%</strong><span class="badge success">Passed</span></div>
+            <div class="similarity-bar"><div style="width:4%"></div></div>
+            <p class="text-muted text-sm mt-12">Checked against 18M public sources and university archive.</p>
+            <button class="btn ghost btn-sm" onclick="alert('Re-running similarity check (stub)…')">Run similarity check</button>
+          </div>
+        </div>
+
+        <div>
+          <h3>Submission Workspace</h3>
+          <div class="ws-tabs">
+            <button class="active" data-ws="write">✍️ Write</button>
+            <button data-ws="code">💻 Code</button>
+            <button data-ws="run">▶️ Run / Preview</button>
+            <button data-ws="upload">📎 Upload</button>
+          </div>
+
+          <div class="ws-pane active" data-ws-pane="write">
+            <div class="rt-toolbar">
+              <button onclick="document.execCommand('bold')" title="Bold"><b>B</b></button>
+              <button onclick="document.execCommand('italic')" title="Italic"><i>I</i></button>
+              <button onclick="document.execCommand('underline')" title="Underline"><u>U</u></button>
+              <button onclick="document.execCommand('formatBlock','H3')">H</button>
+              <button onclick="document.execCommand('insertUnorderedList')">• List</button>
+              <button onclick="document.execCommand('insertOrderedList')">1. List</button>
+              <button onclick="document.execCommand('formatBlock','blockquote')">❝</button>
+              <button onclick="document.execCommand('formatBlock','pre')">&lt;/&gt;</button>
+              <button onclick="(function(){var u=prompt('URL');if(u)document.execCommand('createLink',false,u);})()">🔗</button>
+            </div>
+            <div id="rt-editor" contenteditable="true">Type your answer here. Formatting toolbar above; autosaves as you type.</div>
+            <div class="word-count"><span id="wc">0</span> words · last saved <span id="ls">just now</span></div>
+          </div>
+
+          <div class="ws-pane" data-ws-pane="code">
+            <div class="lang-row">
+              <label class="text-sm text-muted">Language</label>
+              <select id="ws-lang">
+                <option value="javascript" selected>JavaScript</option>
+                <option value="python">Python (sandbox preview only)</option>
+                <option value="html">HTML</option>
+                <option value="css">CSS</option>
+                <option value="typescript">TypeScript</option>
+                <option value="cpp">C++</option>
+                <option value="java">Java</option>
+                <option value="sql">SQL</option>
+              </select>
+              <button class="btn ghost btn-sm" onclick="ws.format()">Format</button>
+              <button class="btn ghost btn-sm" onclick="ws.reset()">Reset</button>
+              <span class="text-muted text-sm" style="margin-left:auto">Powered by Monaco</span>
+            </div>
+            <div id="editor-host"></div>
+          </div>
+
+          <div class="ws-pane" data-ws-pane="run">
+            <div class="row" style="margin-bottom:8px">
+              <button class="btn primary btn-sm" onclick="ws.run()">▶ Run in sandbox</button>
+              <button class="btn ghost btn-sm" onclick="ws.clear()">Clear output</button>
+              <span class="text-muted text-sm" style="margin-left:auto">Sandboxed iframe (no network, no parent access)</span>
+            </div>
+            <iframe id="sandbox-frame" sandbox="allow-scripts" title="Submission sandbox"></iframe>
+            <div id="sandbox-console"><span class="text-muted">Output will appear here.</span></div>
+          </div>
+
+          <div class="ws-pane" data-ws-pane="upload">
+            <div class="field"><label>Attach file</label><input type="file"></div>
+            <div class="field"><label>External URL (Google Doc, GitHub repo…)</label><input type="url" placeholder="https://…"></div>
+          </div>
+
+          <div class="row end mt-12">
+            <button class="btn ghost btn-sm" onclick="ws.saveDraft()">Save draft</button>
+            <button class="btn primary btn-sm" onclick="ws.submit()">Submit</button>
+          </div>
+
+          <h3 class="mt-16">Discussion</h3>
+          <div>
+            <div class="msg-item"><div class="msg-avatar">SB</div><div><strong>Dr. Bayramov</strong> <span class="text-muted text-sm">· 2d ago</span><div class="text-sm">Reminder: use the dataset in /v2 — the older file has duplicate rows.</div></div></div>
+            <div class="msg-item"><div class="msg-avatar">AQ</div><div><strong>Aysel Q.</strong> <span class="text-muted text-sm">· 1d ago</span><div class="text-sm">Is recursion OK or must we use iterative BFS only?</div></div></div>
+            <div class="msg-item"><div class="msg-avatar">SB</div><div><strong>Dr. Bayramov</strong> <span class="text-muted text-sm">· 18h ago</span><div class="text-sm">Either is fine — show your reasoning in comments.</div></div></div>
+          </div>
+          <div class="row mt-12"><input type="text" placeholder="Write a reply…" style="flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:8px"><button class="btn primary btn-sm">Send</button></div>
+        </div>
+      </div>
+    </div>
+
+    ${isTeacher ? `<div id="hw-create" class="card mt-16" style="display:none">
+      <h2>Create New Assignment</h2>
+      <div class="grid two mt-16">
+        <div>
+          <div class="field"><label>Title</label><input type="text" placeholder="e.g. Dynamic Programming Set #3"></div>
+          <div class="field"><label>Subject</label><select>${MOCK.subjects.map(s=>`<option>${s}</option>`).join('')}</select></div>
+          <div class="field"><label>Assigned to</label><select><option>CS-2A</option><option>CS-2B</option><option>All CS year 2</option></select></div>
+          <div class="field"><label>Due date</label><input type="datetime-local"></div>
+          <div class="field"><label>Max score</label><input type="number" value="100"></div>
+        </div>
+        <div>
+          <div class="field"><label>Description</label><textarea rows="10" placeholder="Describe the assignment, expectations, grading rubric…"></textarea></div>
+          <div class="field"><label>Attachments</label><input type="file" multiple></div>
+          <div class="field"><label>Settings</label>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <label class="text-sm"><input type="checkbox" checked> Enable plagiarism check on submission</label>
+              <label class="text-sm"><input type="checkbox" checked> Allow late submissions (−10% per day)</label>
+              <label class="text-sm"><input type="checkbox"> Anonymous grading</label>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="row end mt-16"><button class="btn ghost">Save draft</button><button class="btn primary" onclick="alert('Published to CS-2A (stub)')">Publish</button></div>
+    </div>` : ''}
+  `);
+
+  // Tab switching
+  document.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('[data-tab]').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    const t = b.dataset.tab;
+    const pane = document.getElementById('hw-pane');
+    const create = document.getElementById('hw-create');
+    document.getElementById('hw-detail').style.display = 'none';
+    if (t === 'Create new') { pane.style.display = 'none'; if (create) create.style.display = 'block'; return; }
+    pane.style.display = 'block'; if (create) create.style.display = 'none';
+    let items = MOCK.homework;
+    if (t === 'To submit') items = items.filter(h => h.status !== 'Submitted');
+    if (t === 'Submitted') items = items.filter(h => h.status === 'Submitted');
+    pane.innerHTML = `<div class="hw-grid">${items.map(cardHtml).join('') || '<div class="empty"><div class="emoji">📭</div>Nothing here.</div>'}</div>`;
+    bindOpen();
+  }));
+
+  function bindOpen() {
+    document.querySelectorAll('[data-open]').forEach(b => b.addEventListener('click', () => {
+      const h = MOCK.homework.find(x => x.id === b.dataset.open);
+      const d = document.getElementById('hw-detail');
+      d.style.display = 'block';
+      document.getElementById('d-subj').textContent = h.subject;
+      document.getElementById('d-title').textContent = h.title;
+      document.getElementById('d-due').textContent = 'Due ' + UniFlow.fmt.date(h.due);
+      document.getElementById('d-desc').textContent = h.desc || 'No description provided for this assignment.';
+      d.scrollIntoView({ behavior: 'smooth' });
+    }));
+  }
+  bindOpen();
+  document.getElementById('d-close').addEventListener('click', () => document.getElementById('hw-detail').style.display = 'none');
+
+  // ---- Submission workspace: tabs, Monaco editor, sandbox runner, autosave ----
+  // NOTE: starter snippets use array-join to keep <script>-like tokens out of the source.
+  const STARTERS = {
+    javascript: [
+      '// JavaScript — runs in the sandbox below.',
+      'function fib(n) {',
+      '  if (n < 2) return n;',
+      '  return fib(n - 1) + fib(n - 2);',
+      '}',
+      "console.log('fib(10) =', fib(10));",
+      ''
+    ].join('\n'),
+    python: [
+      '# Python is shown for editing; sandbox would use Pyodide in production.',
+      'def fib(n):',
+      '    return n if n < 2 else fib(n-1) + fib(n-2)',
+      '',
+      "print('fib(10) =', fib(10))",
+      ''
+    ].join('\n'),
+    html: [
+      '<!doctype html>',
+      '<html><' + 'body style="font:14px sans-serif;padding:20px">',
+      '  <h2>Hello, UniFlow!</h2>',
+      '  <p>Edit me, then hit Run.</p>',
+      '</' + 'body></' + 'html>',
+      ''
+    ].join('\n'),
+    css: [
+      '/* CSS — paired with HTML preview */',
+      'body { background: #FAFBFC; color: #0B1220; font-family: Inter, sans-serif; }',
+      'h2 { color: #1A5AD7; }',
+      ''
+    ].join('\n'),
+    typescript: [
+      'function greet(name: string): string {',
+      "  return 'Hello, ' + name;",
+      '}',
+      "console.log(greet('UniFlow'));",
+      ''
+    ].join('\n'),
+    cpp: [
+      '#include ' + '<iostream>',
+      'int main() { std::cout << "Hello, UniFlow" << std::endl; return 0; }',
+      ''
+    ].join('\n'),
+    java: [
+      'public class Main {',
+      '  public static void main(String[] args) {',
+      '    System.out.println("Hello, UniFlow");',
+      '  }',
+      '}',
+      ''
+    ].join('\n'),
+    sql: [
+      '-- Find students with overdue tuition',
+      'SELECT s.id, s.name, i.amount',
+      'FROM students s JOIN invoices i ON i.student_id = s.id',
+      "WHERE i.status = 'PENDING' AND i.due_date < CURRENT_DATE",
+      'ORDER BY i.due_date ASC;',
+      ''
+    ].join('\n'),
+  };
+
+  let editor = null;
+  let currentLang = 'javascript';
+  const LS_KEY = 'uniflow.hw.draft';
+
+  // Tab switching for workspace
+  document.querySelectorAll('[data-ws]').forEach(btn => btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-ws]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const k = btn.dataset.ws;
+    document.querySelectorAll('[data-ws-pane]').forEach(p => p.classList.toggle('active', p.dataset.wsPane === k));
+    if (k === 'code' && editor) editor.layout();
+  }));
+
+  // Monaco bootstrap
+  require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' }});
+  require(['vs/editor/editor.main'], function () {
+    const saved = JSON.parse(localStorage.getItem(LS_KEY) || '{}');
+    if (saved.lang) currentLang = saved.lang;
+    document.getElementById('ws-lang').value = currentLang;
+    editor = monaco.editor.create(document.getElementById('editor-host'), {
+      value: saved.code || STARTERS[currentLang],
+      language: currentLang,
+      theme: 'vs',
+      automaticLayout: true,
+      minimap: { enabled: false },
+      fontSize: 13,
+      tabSize: 2,
+      scrollBeyondLastLine: false,
+    });
+    document.getElementById('ws-lang').addEventListener('change', e => {
+      currentLang = e.target.value;
+      monaco.editor.setModelLanguage(editor.getModel(), currentLang);
+      if (!editor.getValue().trim() || confirm('Replace with starter for ' + currentLang + '?')) {
+        editor.setValue(STARTERS[currentLang] || '');
+      }
+    });
+    editor.onDidChangeModelContent(() => persistDraft());
+  });
+
+  // Rich text autosave + word count
+  const rt = document.getElementById('rt-editor');
+  const wc = document.getElementById('wc');
+  const ls = document.getElementById('ls');
+  const savedRt = JSON.parse(localStorage.getItem(LS_KEY) || '{}').rt;
+  if (savedRt) rt.innerHTML = savedRt;
+  function updateWords() { wc.textContent = (rt.innerText.trim().match(/\S+/g) || []).length; }
+  updateWords();
+  rt.addEventListener('input', () => { updateWords(); persistDraft(); });
+
+  let saveTimer;
+  function persistDraft() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      const payload = { lang: currentLang, code: editor ? editor.getValue() : '', rt: rt.innerHTML, ts: Date.now() };
+      localStorage.setItem(LS_KEY, JSON.stringify(payload));
+      ls.textContent = 'just now';
+    }, 500);
+  }
+
+  // Sandbox runner
+  const consoleEl = document.getElementById('sandbox-console');
+  function logLine(kind, text) {
+    const d = document.createElement('div');
+    d.className = 'line ' + (kind || '');
+    d.textContent = text;
+    consoleEl.appendChild(d);
+    consoleEl.scrollTop = consoleEl.scrollHeight;
+  }
+  window.addEventListener('message', (e) => {
+    if (!e.data || e.data.__uniflow !== 'sandbox') return;
+    logLine(e.data.kind, e.data.text);
+  });
+
+  window.ws = {
+    format() { editor && editor.getAction('editor.action.formatDocument').run(); },
+    reset() { if (editor && confirm('Reset to starter?')) editor.setValue(STARTERS[currentLang]); },
+    clear() { consoleEl.innerHTML = ''; document.getElementById('sandbox-frame').srcdoc = ''; },
+    saveDraft() { persistDraft(); alert('Draft saved to your browser.'); },
+    submit() {
+      const payload = { lang: currentLang, code: editor ? editor.getValue() : '', writeup: rt.innerHTML };
+      console.log('[stub] POST /api/homework/:id/submit', payload);
+      alert('Submitted! ✅  (' + payload.code.length + ' chars of code, ' + (rt.innerText.length) + ' chars written)');
+    },
+    run() {
+      if (!editor) return;
+      const code = editor.getValue();
+      const frame = document.getElementById('sandbox-frame');
+      consoleEl.innerHTML = '';
+      // Build script open/close tags via concatenation so no literal tokens
+      // appear in the parent document source.
+      const SO = '<' + 'script>';
+      const SC = '<' + '/script>';
+      const consoleShim = SO +
+        "(function(){var send=function(k,t){parent.postMessage({__uniflow:'sandbox',kind:k,text:t},'*');};" +
+        "['log','error','warn','info'].forEach(function(k){var orig=console[k];console[k]=function(){var a=[].slice.call(arguments);var s='['+k+'] '+a.map(function(v){try{return typeof v==='object'?JSON.stringify(v):String(v);}catch(e){return String(v);}}).join(' ');send(k==='log'?'':k,s);orig && orig.apply(console,a);};});" +
+        "window.onerror=function(m,_s,l,c){send('err','Error: '+m+' (line '+l+':'+c+')');};" +
+        "})();" + SC;
+
+      let srcdoc = '';
+      if (currentLang === 'html' || currentLang === 'css') {
+        // Split closing tags so live-reload servers don't mistake these JS
+        // string literals for the host page's closing tag.
+        const closeBody = '</' + 'body>';
+        const closeHtml = '</' + 'html>';
+        const page = currentLang === 'html'
+          ? code
+          : '<!doctype html><html><head><style>' + code + '</' + 'style></' + 'head><' + 'body><h2>Hello, UniFlow!</h2><p>Pair with HTML view for full page.</p>' + closeBody + closeHtml;
+        srcdoc = page + consoleShim;
+      } else if (currentLang === 'javascript' || currentLang === 'typescript') {
+        const closeBody = '</' + 'body>';
+        const closeHtml = '</' + 'html>';
+        const userBlock = SO + 'try{\n' + code + '\n}catch(e){console.error("Uncaught: "+e.message);}' + SC;
+        srcdoc = '<!doctype html><html><' + 'body><pre id="out" style="font:13px ui-monospace,monospace;padding:10px;margin:0"></pre>'
+               + consoleShim + userBlock + closeBody + closeHtml;
+      } else {
+        logLine('warn', '[sandbox] ' + currentLang + ' is edit-only in this prototype. In production a server-side runner (Pyodide / WASM / container) would execute it.');
+        return;
+      }
+      frame.srcdoc = srcdoc;
+    },
+  };
+</script>
+</body></html>

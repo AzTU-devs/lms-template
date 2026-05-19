@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tuition & Payments — UniFlow</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static-mockups/assets/css/styles.css">
+</head><body>
+<script src="/static-mockups/assets/js/mock-data.js"></script>
+<script src="/static-mockups/assets/js/app.js"></script>
+<script>
+  UniFlow.renderShell({ title: 'Tuition & Payments' });
+
+  const outstanding = MOCK.tuitionBreakdown.reduce((a, b) => a + b.amount, 0);
+  const studentTx = MOCK.transactions.filter(t => t.student === 'S-1001');
+
+  const statusBadge = (s) => {
+    const map = { Paid: 'success', Pending: 'warn', Failed: 'danger', Refunded: 'info' };
+    return `<span class="badge ${map[s] || 'muted'}">${s}</span>`;
+  };
+
+  UniFlow.setContent(`
+    <div id="pay-banner"></div>
+
+    <div class="grid two">
+      <div class="card">
+        <div class="label text-muted">Outstanding balance</div>
+        <div style="font-size:38px;font-weight:700;color:var(--primary);margin-top:4px">${UniFlow.fmt.money(outstanding)}</div>
+        <div class="text-muted text-sm">Due by 30 September 2025</div>
+        <div class="mt-16">
+          ${MOCK.tuitionBreakdown.map(b => `
+            <div class="row between" style="padding:8px 0;border-bottom:1px solid var(--border)">
+              <div>${b.label}</div>
+              <div style="${b.amount<0?'color:var(--success);font-weight:600':'font-weight:600'}">${UniFlow.fmt.money(b.amount)}</div>
+            </div>
+          `).join('')}
+          <div class="row between" style="padding:10px 0;font-weight:700">
+            <div>Total</div><div>${UniFlow.fmt.money(outstanding)}</div>
+          </div>
+        </div>
+        <div class="row end mt-12">
+          <button class="btn primary" onclick="document.getElementById('checkout').scrollIntoView({behavior:'smooth'})">Pay now</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Choose payment plan</h2>
+        <div class="mt-12">
+          <label class="row" style="gap:10px;padding:12px;border:1px solid var(--border);border-radius:8px;cursor:pointer">
+            <input type="radio" name="plan" value="full" checked>
+            <div class="flex-1">
+              <div style="font-weight:600">Pay in full</div>
+              <div class="text-muted text-sm">One-time payment, no extra fees</div>
+            </div>
+            <div style="font-weight:600">${UniFlow.fmt.money(outstanding)}</div>
+          </label>
+          <label class="row mt-12" style="gap:10px;padding:12px;border:1px solid var(--border);border-radius:8px;cursor:pointer">
+            <input type="radio" name="plan" value="three">
+            <div class="flex-1">
+              <div style="font-weight:600">3 monthly installments</div>
+              <div class="text-muted text-sm">No interest, auto-charged on the 1st</div>
+            </div>
+            <div style="font-weight:600">${UniFlow.fmt.money(outstanding/3)} <span class="text-muted text-sm">/mo</span></div>
+          </label>
+        </div>
+        <div class="mt-16 card" style="background:var(--primary-soft);border:none">
+          <div class="text-sm">You'll pay <strong id="per-amt">${UniFlow.fmt.money(outstanding)}</strong> <span id="per-suffix">today</span>.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mt-16" id="checkout">
+      <h2>Secure checkout</h2>
+      <p class="text-muted text-sm">Powered by Stripe (mock). All payment data is encrypted.</p>
+      <div class="grid two mt-12">
+        <div class="field"><label>Cardholder name</label><input type="text" value="Aysel Quliyeva"></div>
+        <div class="field"><label>Card number</label><input type="text" value="4242 4242 4242 4242"></div>
+        <div class="field"><label>Expiry</label><input type="text" value="08 / 27" placeholder="MM / YY"></div>
+        <div class="field"><label>CVC</label><input type="text" value="123" maxlength="4"></div>
+      </div>
+      <div class="row end mt-12">
+        <button class="btn ghost" onclick="alert('Saved as draft.')">Save card</button>
+        <button class="btn primary" id="pay-btn">Pay <span id="pay-amt">${UniFlow.fmt.money(outstanding)}</span></button>
+      </div>
+    </div>
+
+    <div class="card mt-16">
+      <h2>Other payment methods</h2>
+      <div class="grid three mt-12">
+        <button class="card" style="display:flex;align-items:center;gap:12px;cursor:pointer;text-align:left" onclick="alert('Redirecting to PayPal…')">
+          <div style="font-size:24px">🅿️</div><div><div style="font-weight:600">PayPal</div><div class="text-muted text-sm">Pay with your PayPal balance</div></div>
+        </button>
+        <button class="card" style="display:flex;align-items:center;gap:12px;cursor:pointer;text-align:left" onclick="alert('Opening Million Card portal…')">
+          <div style="font-size:24px">🏦</div><div><div style="font-weight:600">Million Card</div><div class="text-muted text-sm">Local installment partner</div></div>
+        </button>
+        <button class="card" style="display:flex;align-items:center;gap:12px;cursor:pointer;text-align:left" onclick="alert('Opening Apple Pay…')">
+          <div style="font-size:24px">🍎</div><div><div style="font-weight:600">Apple Pay</div><div class="text-muted text-sm">Touch ID / Face ID</div></div>
+        </button>
+      </div>
+    </div>
+
+    <div class="card mt-16">
+      <div class="row between"><h2>Payment history</h2><span class="badge muted">${studentTx.length} transactions</span></div>
+      <div class="table-wrap mt-12">
+        <table class="data" id="history-table">
+          <thead><tr><th>ID</th><th>Date</th><th>Description</th><th style="text-align:right">Amount</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            ${studentTx.map(t => `
+              <tr>
+                <td><code>${t.id}</code></td>
+                <td>${UniFlow.fmt.date(t.date)}</td>
+                <td>${t.desc}</td>
+                <td style="text-align:right;${t.amount<0?'color:var(--success);font-weight:600':''}">${UniFlow.fmt.money(t.amount)}</td>
+                <td>${statusBadge(t.status)}</td>
+                <td><button class="btn ghost btn-sm" onclick="alert('Receipt ${t.id}.pdf downloaded.')">PDF receipt</button></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div class="text-muted text-sm mt-16">Payments are recorded into the <a href="/static-mockups/admin/finance.html" style="color:var(--primary)">Finance module</a> on success.</div>
+    </div>
+  `);
+
+  // Plan radio live update
+  function updatePlan() {
+    const plan = document.querySelector('input[name="plan"]:checked').value;
+    const amt = plan === 'full' ? outstanding : outstanding / 3;
+    const suffix = plan === 'full' ? 'today' : 'today, then 2 more monthly';
+    document.getElementById('per-amt').textContent = UniFlow.fmt.money(amt);
+    document.getElementById('per-suffix').textContent = suffix;
+    document.getElementById('pay-amt').textContent = UniFlow.fmt.money(amt);
+  }
+  document.querySelectorAll('input[name="plan"]').forEach(r => r.addEventListener('change', updatePlan));
+
+  // Mock pay button → success banner + new row
+  document.getElementById('pay-btn').addEventListener('click', () => {
+    const plan = document.querySelector('input[name="plan"]:checked').value;
+    const amt = plan === 'full' ? outstanding : outstanding / 3;
+    const banner = document.getElementById('pay-banner');
+    banner.innerHTML = `<div class="card" style="background:#E6F7EE;border:1px solid #34C77B;color:#0A6C3D">
+      <strong>✓ Payment successful</strong> — ${UniFlow.fmt.money(amt)} charged to card ending 4242. A receipt was emailed to you.
+    </div>`;
+    const tbody = document.querySelector('#history-table tbody');
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td><code>T-NEW</code></td><td>${UniFlow.fmt.date(new Date())}</td><td>Tuition payment (online)</td>
+      <td style="text-align:right">${UniFlow.fmt.money(amt)}</td><td><span class="badge success">Paid</span></td>
+      <td><button class="btn ghost btn-sm" onclick="alert('Receipt downloaded.')">PDF receipt</button></td>`;
+    tbody.prepend(tr);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+</script>
+</body></html>

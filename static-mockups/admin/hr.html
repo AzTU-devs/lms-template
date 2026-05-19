@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Human Resources — UniFlow</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static-mockups/assets/css/styles.css">
+</head><body>
+<script src="/static-mockups/assets/js/mock-data.js"></script>
+<script src="/static-mockups/assets/js/app.js"></script>
+<script>
+  UniFlow.renderShell({ title: 'Human Resources' });
+
+  const SALARY = { P3: 4500, P2: 4000, P1: 3500, L2: 3000, L1: 2700, A2: 1800, A1: 1500 };
+  const netOf = (g) => Math.round(g * 0.86); // simple tax stub
+
+  const statusBadge = (s) => {
+    const map = { Active: 'success', 'On leave': 'warn', Inactive: 'muted' };
+    return `<span class="badge ${map[s] || 'muted'}">${s}</span>`;
+  };
+
+  const employees = MOCK.employees;
+  const deptOptions = [...new Set(employees.map(e => e.dept))].map(d => `<option>${d}</option>`).join('');
+
+  // Synthesized leave requests
+  const leaveRequests = [
+    { id: 'LR-01', emp: 'Aysu Mehdiyeva', from: '2025-06-02', to: '2025-06-06', days: 5, type: 'Annual', status: 'Pending' },
+    { id: 'LR-02', emp: 'Vugar Rahimov', from: '2025-05-22', to: '2025-05-23', days: 2, type: 'Sick', status: 'Approved' },
+    { id: 'LR-03', emp: 'Dr. Farid Aghayev', from: '2025-07-14', to: '2025-07-28', days: 14, type: 'Annual', status: 'Pending' },
+    { id: 'LR-04', emp: 'Sevinj Karimova', from: '2025-05-10', to: '2025-05-30', days: 20, type: 'Parental', status: 'Approved' },
+  ];
+
+  const totalPayroll = employees.reduce((a, e) => a + (SALARY[e.salaryBand] || 2000), 0);
+  const avgSalary = Math.round(totalPayroll / employees.length);
+
+  // === Directory tab ===
+  const directoryHtml = `
+    <div class="filters">
+      <div class="field flex-1"><label>Search</label><input type="search" placeholder="Search by name, role, email…"></div>
+      <div class="field"><label>Department</label><select><option value="">All</option>${deptOptions}</select></div>
+      <div class="field"><label>Status</label><select><option>All</option><option>Active</option><option>On leave</option></select></div>
+      <div class="field"><label>&nbsp;</label><button class="btn primary" onclick="alert('Open new employee form')">+ Add employee</button></div>
+    </div>
+    <div class="table-wrap mt-12">
+      <table class="data">
+        <thead><tr><th>Name</th><th>Role</th><th>Department</th><th>Email</th><th>Salary band</th><th>Leave bal.</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          ${employees.map(e => `
+            <tr>
+              <td><strong>${e.name}</strong><div class="text-muted text-sm">${e.id}</div></td>
+              <td>${e.role}</td>
+              <td>${e.dept}</td>
+              <td>${e.email}</td>
+              <td><span class="badge info">${e.salaryBand}</span></td>
+              <td>${e.leaveBalance} days</td>
+              <td>${statusBadge(e.status)}</td>
+              <td><button class="btn ghost btn-sm" onclick="viewEmp('${e.id}')">View</button></td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card mt-16" style="border:2px solid var(--primary-soft)">
+      <div class="row between">
+        <h2>Employee profile — ${employees[0].name}</h2>
+        <span class="badge success">${employees[0].status}</span>
+      </div>
+      <div class="grid three mt-12">
+        <div>
+          <div class="label text-muted">Personal info</div>
+          <div style="margin-top:6px"><strong>${employees[0].name}</strong></div>
+          <div class="text-sm">${employees[0].email}</div>
+          <div class="text-sm">DOB: 14 Mar 1978</div>
+          <div class="text-sm">Phone: +994 50 123 45 67</div>
+        </div>
+        <div>
+          <div class="label text-muted">Contract</div>
+          <div style="margin-top:6px">Full-time · Permanent</div>
+          <div class="text-sm">Start: 01 Sep 2018</div>
+          <div class="text-sm">Band: ${employees[0].salaryBand} (${UniFlow.fmt.money(SALARY[employees[0].salaryBand])}/mo)</div>
+        </div>
+        <div>
+          <div class="label text-muted">Attendance %</div>
+          <div style="font-size:24px;font-weight:700;color:var(--primary);margin-top:6px">96.4%</div>
+          <div class="text-muted text-sm">Last 90 days</div>
+        </div>
+        <div>
+          <div class="label text-muted">Leave balance</div>
+          <div style="font-size:24px;font-weight:700;margin-top:6px">${employees[0].leaveBalance} days</div>
+          <div class="text-muted text-sm">2 pending requests</div>
+        </div>
+        <div>
+          <div class="label text-muted">Performance review</div>
+          <div style="margin-top:6px"><span class="badge success">Exceeds expectations</span></div>
+          <div class="text-muted text-sm">Last review: Jan 2025</div>
+        </div>
+        <div>
+          <div class="label text-muted">Documents</div>
+          <div style="margin-top:6px" class="text-sm">🔒 Contract.pdf <button class="btn ghost btn-sm" onclick="alert('Authenticate to view.')">View</button></div>
+          <div class="text-sm">🔒 ID copy.pdf <button class="btn ghost btn-sm" onclick="alert('Authenticate to view.')">View</button></div>
+          <div class="text-sm">🔒 Tax_Form.pdf <button class="btn ghost btn-sm" onclick="alert('Authenticate to view.')">View</button></div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // === Hiring Pipeline tab ===
+  const pipeline = MOCK.hiringPipeline;
+  const pipelineHtml = `
+    <div class="row between"><h2>Hiring Pipeline</h2><button class="btn primary" onclick="alert('Open job posting form')">+ New posting</button></div>
+    <div class="kanban mt-12">
+      ${Object.entries(pipeline).map(([col, cards]) => `
+        <div class="col">
+          <h4>${col} <span class="badge muted">${cards.length}</span></h4>
+          ${cards.map(c => `
+            <div class="card-mini">
+              <div style="font-weight:600">${c.name}</div>
+              <div class="text-muted text-sm">${c.role}</div>
+              <div class="row mt-12" style="gap:6px"><button class="btn ghost btn-sm" onclick="alert('Open ${c.name} profile')">Open</button></div>
+            </div>
+          `).join('') || '<div class="text-muted text-sm">No candidates</div>'}
+        </div>
+      `).join('')}
+    </div>
+  `;
+
+  // === Payroll tab ===
+  const payrollHtml = `
+    <div class="grid kpi">
+      <div class="card kpi-card"><div class="label">Total payroll / month</div><div class="value">${UniFlow.fmt.money(totalPayroll)}</div><div class="delta up">+2.1% vs last month</div></div>
+      <div class="card kpi-card"><div class="label">Average salary</div><div class="value">${UniFlow.fmt.money(avgSalary)}</div><div class="delta">${employees.length} employees</div></div>
+      <div class="card kpi-card"><div class="label">Pending payouts</div><div class="value">${UniFlow.fmt.money(Math.round(totalPayroll*0.18))}</div><div class="delta down">3 awaiting approval</div></div>
+    </div>
+    <div class="card mt-16">
+      <div class="row between"><h2>Monthly payroll</h2><div><button class="btn ghost btn-sm" onclick="alert('Run payroll for current month?')">Run payroll</button><button class="btn ghost btn-sm" onclick="alert('Exported.')">Export</button></div></div>
+      <p class="text-muted text-sm">Read-only for managers. HR can edit salary bands and bonus components.</p>
+      <div class="table-wrap mt-12">
+        <table class="data">
+          <thead><tr><th>Employee</th><th>Band</th><th style="text-align:right">Gross</th><th style="text-align:right">Tax (14%)</th><th style="text-align:right">Net</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            ${employees.map(e => {
+              const g = SALARY[e.salaryBand] || 2000;
+              return `<tr>
+                <td><strong>${e.name}</strong><div class="text-muted text-sm">${e.dept}</div></td>
+                <td><span class="badge info">${e.salaryBand}</span></td>
+                <td style="text-align:right">${UniFlow.fmt.money(g)}</td>
+                <td style="text-align:right;color:var(--danger)">−${UniFlow.fmt.money(g - netOf(g))}</td>
+                <td style="text-align:right;font-weight:600">${UniFlow.fmt.money(netOf(g))}</td>
+                <td><span class="badge success">Paid</span></td>
+                <td><button class="btn ghost btn-sm" onclick="alert('HR-only: edit ${e.name} salary')">Edit</button></td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  // === Leave Requests tab ===
+  const leaveHtml = `
+    <div class="row between"><h2>Leave Requests</h2><span class="badge warn">${leaveRequests.filter(l=>l.status==='Pending').length} pending</span></div>
+    <div class="table-wrap mt-12">
+      <table class="data" id="leave-table">
+        <thead><tr><th>ID</th><th>Employee</th><th>From</th><th>To</th><th>Days</th><th>Type</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>
+          ${leaveRequests.map(l => `
+            <tr data-id="${l.id}">
+              <td><code>${l.id}</code></td>
+              <td>${l.emp}</td>
+              <td>${l.from}</td>
+              <td>${l.to}</td>
+              <td>${l.days}</td>
+              <td>${l.type}</td>
+              <td class="lv-status">${l.status === 'Pending' ? '<span class="badge warn">Pending</span>' : l.status === 'Approved' ? '<span class="badge success">Approved</span>' : '<span class="badge danger">Rejected</span>'}</td>
+              <td>
+                <button class="btn btn-sm primary" onclick="setLeave('${l.id}','Approved')">Approve</button>
+                <button class="btn btn-sm danger" onclick="setLeave('${l.id}','Rejected')">Reject</button>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  UniFlow.setContent(`
+    <div class="tabs">
+      <button class="active" data-tab="directory">Directory</button>
+      <button data-tab="pipeline">Hiring Pipeline</button>
+      <button data-tab="payroll">Payroll</button>
+      <button data-tab="leave">Leave Requests</button>
+    </div>
+    <div id="tab-directory" class="tab-pane mt-16">${directoryHtml}</div>
+    <div id="tab-pipeline" class="tab-pane mt-16" style="display:none">${pipelineHtml}</div>
+    <div id="tab-payroll" class="tab-pane mt-16" style="display:none">${payrollHtml}</div>
+    <div id="tab-leave" class="tab-pane mt-16" style="display:none">${leaveHtml}</div>
+  `);
+
+  // Tab wiring
+  document.querySelectorAll('.tabs button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const tab = btn.getAttribute('data-tab');
+      document.querySelectorAll('.tab-pane').forEach(p => p.style.display = 'none');
+      document.getElementById('tab-' + tab).style.display = '';
+    });
+  });
+
+  // Employee view stub
+  window.viewEmp = function (id) {
+    const e = employees.find(x => x.id === id);
+    if (!e) return;
+    alert(`${e.name} — ${e.role}\nDept: ${e.dept}\nEmail: ${e.email}\nContract: Full-time, Permanent\nSalary band: ${e.salaryBand} (${UniFlow.fmt.money(SALARY[e.salaryBand]||2000)}/mo)\nAttendance: 96%\nLeave balance: ${e.leaveBalance} days\nStatus: ${e.status}`);
+  };
+
+  // Leave approve/reject
+  window.setLeave = function (id, status) {
+    const row = document.querySelector(`#leave-table tr[data-id="${id}"] .lv-status`);
+    if (!row) return;
+    const cls = status === 'Approved' ? 'success' : 'danger';
+    row.innerHTML = `<span class="badge ${cls}">${status}</span>`;
+  };
+</script>
+</body></html>

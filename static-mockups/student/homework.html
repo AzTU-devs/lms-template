@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Homework Deadlines — UniFlow</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static-mockups/assets/css/styles.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  .strip { display: grid; grid-template-columns: repeat(14, 1fr); gap: 6px; }
+  .strip .dcell { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 6px; text-align: center; font-size: 12px; min-height: 64px; position: relative; }
+  .strip .dcell.today { border-color: var(--primary); background: var(--primary-soft); }
+  .strip .dcell .dnum { font-weight: 600; font-size: 14px; }
+  .strip .dcell .dots { display: flex; gap: 3px; justify-content: center; margin-top: 6px; flex-wrap: wrap; }
+  .strip .dcell .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .hw-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+  .hw-card { border-left: 5px solid var(--primary); }
+  .hw-card.urg-green { border-left-color: #22C55E; }
+  .hw-card.urg-yellow { border-left-color: #F0A500; }
+  .hw-card.urg-red { border-left-color: #E25555; }
+  .hw-card.urg-grey { border-left-color: #9CA3AF; opacity: .8; }
+  .countdown { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 22px; color: var(--text); }
+  .countdown.red { color: var(--danger); }
+  .countdown.yellow { color: var(--warn); }
+  .countdown.green { color: var(--success); }
+  .countdown.grey { color: var(--muted); }
+</style>
+</head><body>
+<script src="/static-mockups/assets/js/mock-data.js"></script>
+<script src="/static-mockups/assets/js/app.js"></script>
+<script>
+  UniFlow.renderShell({ title: 'Homework Deadlines' });
+
+  function urgencyClass(h) {
+    if (h.status === 'Submitted') return 'grey';
+    const d = UniFlow.fmt.daysUntil(h.due);
+    if (d < 3) return 'red';
+    if (d <= 7) return 'yellow';
+    return 'green';
+  }
+
+  function statusBadge(s) {
+    const map = { 'Not started': 'muted', Draft: 'warn', Submitted: 'success' };
+    return `<span class="badge ${map[s] || 'muted'}">${s}</span>`;
+  }
+
+  // 14-day strip
+  const today = new Date(); today.setHours(0,0,0,0);
+  let stripCells = '';
+  for (let i = 0; i < 14; i++) {
+    const d = new Date(today); d.setDate(d.getDate() + i);
+    const dueOn = MOCK.homework.filter(h => {
+      const hd = new Date(h.due); hd.setHours(0,0,0,0);
+      return hd.getTime() === d.getTime();
+    });
+    const dots = dueOn.slice(0, 4).map(h => `<span class="dot" style="background:${urgencyClass(h)==='red'?'#E25555':urgencyClass(h)==='yellow'?'#F0A500':urgencyClass(h)==='green'?'#22C55E':'#9CA3AF'}" title="${h.title}"></span>`).join('');
+    stripCells += `<div class="dcell ${i===0?'today':''}">
+      <div class="text-muted" style="font-size:10px">${d.toLocaleString('en-GB',{weekday:'short'})}</div>
+      <div class="dnum">${d.getDate()}</div>
+      <div class="dots">${dots}</div>
+    </div>`;
+  }
+
+  function cardHtml(h) {
+    const urg = urgencyClass(h);
+    return `<div class="card hw-card urg-${urg}" data-due="${h.due}" data-status="${h.status}">
+      <div class="row between">
+        <span class="badge info">${h.subject}</span>
+        ${statusBadge(h.status)}
+      </div>
+      <h3 style="margin:8px 0 4px">${h.title}</h3>
+      <div class="text-sm text-muted">${h.desc || 'See assignment details.'}</div>
+      <div class="text-sm text-muted mt-12">Due ${UniFlow.fmt.date(h.due)}</div>
+      <div class="countdown ${urg}" data-cd>${h.status === 'Submitted' ? 'Submitted' : '—'}</div>
+      <div class="row end mt-12">
+        <button class="btn ghost btn-sm">Snooze</button>
+        <a class="btn primary btn-sm" href="/static-mockups/homework/index.html">Open</a>
+      </div>
+    </div>`;
+  }
+
+  UniFlow.setContent(`
+    <div class="card">
+      <div class="filters">
+        <div class="field"><label>Subject</label><select><option>All subjects</option>${MOCK.subjects.map(s=>`<option>${s}</option>`).join('')}</select></div>
+        <div class="field"><label>Status</label><select><option>All</option><option>Not started</option><option>Draft</option><option>Submitted</option></select></div>
+        <div class="field"><label>Sort</label><select><option>Due date ↑</option><option>Due date ↓</option></select></div>
+        <div class="field" style="align-self:end"><button class="btn primary">Apply</button></div>
+      </div>
+    </div>
+
+    <div class="card mt-16">
+      <div class="row between"><h2>Next 14 days</h2><span class="badge muted">${MOCK.homework.filter(h => { const d = UniFlow.fmt.daysUntil(h.due); return d>=0 && d<=14 && h.status!=='Submitted'; }).length} deadlines</span></div>
+      <div class="strip mt-12">${stripCells}</div>
+    </div>
+
+    <div class="grid two mt-16" style="grid-template-columns: 3fr 1fr">
+      <div>
+        <div class="hw-grid" id="hw-grid">
+          ${MOCK.homework.map(cardHtml).join('')}
+        </div>
+      </div>
+      <div>
+        <div class="card">
+          <h3 style="margin-top:0">Reminder settings</h3>
+          <label class="text-sm" style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><input type="checkbox" checked> Email me 24h before deadline</label>
+          <label class="text-sm" style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><input type="checkbox" id="notify-toggle"> Browser notification 1h before</label>
+          <label class="text-sm" style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><input type="checkbox"> Push to mobile app</label>
+          <label class="text-sm" style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><input type="checkbox" checked> Weekly digest (Sunday evening)</label>
+          <button class="btn primary btn-sm mt-12" style="width:100%">Save preferences</button>
+        </div>
+
+        <div class="card mt-16">
+          <h3 style="margin-top:0">Quick stats</h3>
+          <div class="text-sm" style="display:flex;flex-direction:column;gap:6px">
+            <div class="row between"><span>Total open</span><strong>${MOCK.homework.filter(h=>h.status!=='Submitted').length}</strong></div>
+            <div class="row between"><span>Due in 48h</span><strong style="color:var(--danger)">${MOCK.homework.filter(h=>{const d=UniFlow.fmt.daysUntil(h.due);return d>=0&&d<=2&&h.status!=='Submitted';}).length}</strong></div>
+            <div class="row between"><span>Drafts</span><strong style="color:var(--warn)">${MOCK.homework.filter(h=>h.status==='Draft').length}</strong></div>
+            <div class="row between"><span>Submitted</span><strong style="color:var(--success)">${MOCK.homework.filter(h=>h.status==='Submitted').length}</strong></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <p class="text-muted text-sm mt-16">Deadlines also appear on the calendar — see <a href="/static-mockups/student/schedule.html">My Schedule</a>.</p>
+  `);
+
+  // Live countdown updater
+  function fmtCountdown(due, status) {
+    if (status === 'Submitted') return 'Submitted ✓';
+    const diff = new Date(due) - Date.now();
+    if (diff < 0) {
+      const absD = Math.floor(-diff / 86400000);
+      const absH = Math.floor((-diff % 86400000) / 3600000);
+      return `Overdue ${absD}d ${absH}h`;
+    }
+    const d = Math.floor(diff / 86400000);
+    const h = Math.floor((diff % 86400000) / 3600000);
+    const m = Math.floor((diff % 3600000) / 60000);
+    const s = Math.floor((diff % 60000) / 1000);
+    if (d > 0) return `${d}d ${h}h ${m}m ${s}s`;
+    return `${h}h ${m}m ${s}s`;
+  }
+  function tick() {
+    document.querySelectorAll('[data-cd]').forEach(el => {
+      const card = el.closest('.hw-card');
+      el.textContent = fmtCountdown(card.dataset.due, card.dataset.status);
+    });
+  }
+  tick();
+  setInterval(tick, 1000);
+
+  document.getElementById('notify-toggle').addEventListener('change', (e) => {
+    if (e.target.checked && 'Notification' in window) {
+      Notification.requestPermission().then(p => {
+        if (p !== 'granted') { e.target.checked = false; alert('Permission denied. Notifications disabled.'); }
+        else alert('Browser notifications enabled.');
+      });
+    }
+  });
+</script>
+</body></html>

@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#1A5AD7">
+  <link rel="manifest" href="/static-mockups/manifest.json">
+  <title>UniFlow — University LMS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static-mockups/assets/css/styles.css">
+</head>
+<body>
+  <script src="/static-mockups/assets/js/mock-data.js"></script>
+  <script src="/static-mockups/assets/js/app.js"></script>
+  <script>
+    UniFlow.renderShell({ title: 'Dashboard' });
+
+    const tiles = [
+      { href: '/static-mockups/student/schedule.html', icon: '📅', title: 'My Schedule', desc: 'Weekly classes, rooms, teachers' },
+      { href: '/static-mockups/student/homework.html', icon: '⏰', title: 'Homework Deadlines', desc: 'Countdown timers by urgency' },
+      { href: '/static-mockups/homework/index.html', icon: '📝', title: 'Homework Hub', desc: 'Assignments, submissions, threads' },
+      { href: '/static-mockups/exams/index.html', icon: '🧪', title: 'Exams', desc: 'Online + paper-based history' },
+      { href: '/static-mockups/student/attendance.html', icon: '✅', title: 'Attendance', desc: 'Turnstile check-ins per lesson' },
+      { href: '/static-mockups/student/payments.html', icon: '💳', title: 'Tuition & Payments', desc: 'Balance, installments, receipts' },
+      { href: '/static-mockups/assignments/ai-review.html', icon: '🤖', title: 'AI Assignment Review', desc: 'Submit, get scored, track growth' },
+      { href: '/static-mockups/ai-tutor/index.html', icon: '💬', title: 'AI Tutor', desc: 'Step-by-step concept help' },
+      { href: '/static-mockups/news/index.html', icon: '📰', title: 'News', desc: 'Academic, campus life, sports' },
+      { href: '/static-mockups/events/index.html', icon: '🎟️', title: 'Events', desc: 'RSVP, capacity, calendar' },
+      { href: '/static-mockups/mobile-app/index.html', icon: '📱', title: 'Mobile App', desc: 'Install UniFlow as a PWA' },
+      { href: '/static-mockups/admin/finance.html', icon: '💰', title: 'Finance (admin)', desc: 'Revenue, transactions, invoices' },
+      { href: '/static-mockups/admin/hr.html', icon: '👥', title: 'HR (admin)', desc: 'Employees, hiring, payroll' },
+      { href: '/static-mockups/admin/attendance.html', icon: '📡', title: 'Attendance (admin)', desc: 'Live roster, gates, logs' },
+    ];
+
+    const today = MOCK.schedule.filter(s => s.day === ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date().getDay()]);
+    const upcoming = MOCK.homework.filter(h => UniFlow.fmt.daysUntil(h.due) >= 0 && h.status !== 'Submitted').slice(0, 3);
+
+    UniFlow.setContent(`
+      <div class="grid kpi">
+        <div class="card kpi-card"><div class="label">Today's classes</div><div class="value">${today.length}</div><div class="delta">${today.map(t => t.subject).join(' · ') || '—'}</div></div>
+        <div class="card kpi-card"><div class="label">Open homework</div><div class="value">${MOCK.homework.filter(h => h.status !== 'Submitted').length}</div><div class="delta up">${upcoming.length} due soon</div></div>
+        <div class="card kpi-card"><div class="label">Attendance</div><div class="value">${Math.round(MOCK.attendance.reduce((a,b)=>a+b.attended,0) / MOCK.attendance.reduce((a,b)=>a+b.total,0) * 100)}%</div><div class="delta up">+2% this month</div></div>
+        <div class="card kpi-card"><div class="label">GPA</div><div class="value">3.62</div><div class="delta up">+0.04</div></div>
+      </div>
+
+      <div class="grid two mt-16">
+        <div class="card">
+          <h2>Quick access — all 12 modules</h2>
+          <div class="grid three mt-12">
+            ${tiles.map(t => `
+              <a href="${t.href}" class="card" style="display:block;text-decoration:none;color:inherit;padding:14px">
+                <div style="font-size:22px;margin-bottom:6px">${t.icon}</div>
+                <div style="font-weight:600">${t.title}</div>
+                <div class="text-muted text-sm">${t.desc}</div>
+              </a>
+            `).join('')}
+          </div>
+        </div>
+        <div class="card">
+          <h2>Upcoming this week</h2>
+          ${upcoming.length === 0 ? '<div class="empty"><div class="emoji">🎉</div>All caught up!</div>' :
+            upcoming.map(h => `
+              <div class="row between" style="padding:10px 0;border-bottom:1px solid var(--border)">
+                <div><strong>${h.title}</strong><div class="text-muted text-sm">${h.subject}</div></div>
+                <div class="text-sm"><span class="badge ${UniFlow.fmt.daysUntil(h.due) < 3 ? 'danger' : UniFlow.fmt.daysUntil(h.due) < 7 ? 'warn' : 'success'}">in ${UniFlow.fmt.daysUntil(h.due)}d</span></div>
+              </div>
+            `).join('')}
+          <h2 class="mt-16">News</h2>
+          ${MOCK.news.slice(0,3).map(n => `<div style="padding:8px 0;border-bottom:1px solid var(--border)"><div><strong>${n.title}</strong> <span class="badge">${n.cat}</span></div><div class="text-muted text-sm">${UniFlow.fmt.date(n.date)}</div></div>`).join('')}
+        </div>
+      </div>
+    `);
+  </script>
+</body>
+</html>
